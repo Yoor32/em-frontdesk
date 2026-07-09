@@ -1,0 +1,13 @@
+{
+  "name": "EM Passport — Front Desk",
+  "short_name": "EM Front Desk",
+  "description": "Staff dashboard for bachatasensual.ca — check-in, students, payments.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d0d0f",
+  "theme_color": "#0d0d0f",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EM Passport — Front Desk</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d0d0f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="EM Front Desk">
+<!--
+  EM PASSPORT FRONT-DESK DASHBOARD  v3.0
+  Recycled patterns from the FitKid Gymnastic staff PWA (live-search dropdown,
+  student "ficha" dashboard with quick-actions, toast, PWA), re-skinned to EM
+  black & gold and wired to the EM Front Desk API v2.
+  Host on GitHub Pages → embed in a password-protected Duda page.
+  Config: API_URL, LINK_URL, PLAN_PRICE, PAY_PRESETS, CRM_LINKS below.
+-->
+<style>
+  :root{
+    --gold:#D4AF37; --gold-dim:#a8862a; --bg:#0d0d0f; --panel:#17171b; --panel2:#1f1f25; --panel3:#26262c;
+    --text:#f2ede3; --muted:#9a938a; --hint:#6f6a63; --err:#e05656; --ok:#5fbf7a; --line:#2b2b31;
+    --r-lg:16px; --r:12px; --r-sm:9px; --pill:999px;
+    --sh:0 6px 20px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
+  body{background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+  #app,#login{max-width:760px;margin:0 auto;padding:18px 14px 70px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+  label{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 6px}
+  input,select{width:100%;padding:12px 13px;border-radius:var(--r-sm);border:1px solid #33333b;background:var(--panel2);color:var(--text);font-size:1rem;outline:none;font-family:inherit}
+  input:focus,select:focus{border-color:var(--gold)}
+  button{font-family:inherit;cursor:pointer}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:12px;padding:13px;border:0;border-radius:var(--r-sm);background:var(--gold);color:#151515;font-weight:700;font-size:.95rem;letter-spacing:.04em;text-transform:uppercase}
+  .btn:hover{background:var(--gold-dim)} .btn:disabled{opacity:.5;cursor:wait}
+  .btn.ghost{background:var(--panel2);color:var(--text);border:1px solid #33333b;text-transform:none;font-weight:600;letter-spacing:0}
+  .btn.ghost:hover{border-color:var(--gold);color:var(--gold);background:var(--panel2)}
+  .btn.ok{background:rgba(95,191,122,.14);color:var(--ok);border:1px solid rgba(95,191,122,.4)}
+
+  /* hero */
+  .hero{border-radius:var(--r-lg);padding:16px 18px;margin-bottom:16px;background:linear-gradient(120deg,#1a1408 0%,#241c0c 60%,#12100a 100%);border:1px solid #33280f}
+  .hrow{display:flex;align-items:center;gap:12px}
+  .hlogo{width:40px;height:40px;border-radius:11px;background:var(--gold);color:#151515;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem}
+  .htit{font-weight:700;font-size:1.15rem;color:var(--gold);letter-spacing:.02em}
+  .hsub{font-size:.75rem;color:var(--muted)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+  .stat{background:rgba(212,175,55,.07);border:1px solid rgba(212,175,55,.18);border-radius:11px;padding:9px 11px}
+  .stat .v{font-size:1.15rem;font-weight:700;color:var(--gold)}
+  .stat .l{font-size:.7rem;color:var(--muted);margin-top:1px}
+
+  /* search + dropdown */
+  .search{position:relative;margin-bottom:14px}
+  .search input{padding-left:38px}
+  .search::before{content:"🔍";position:absolute;left:13px;top:12px;opacity:.5}
+  .drop{position:absolute;left:0;right:0;top:50px;background:var(--panel);border:1px solid var(--panel3);border-radius:var(--r-sm);box-shadow:var(--sh);max-height:320px;overflow:auto;z-index:40;display:none}
+  .drop.on{display:block}
+  .ditem{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
+  .ditem:hover{background:var(--panel2)} .ditem:last-child{border-bottom:0}
+  .avatar{width:32px;height:32px;border-radius:50%;background:rgba(212,175,55,.15);color:var(--gold);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.78rem;flex:0 0 auto}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;-webkit-overflow-scrolling:touch}
+  .tab{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:var(--pill);background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:.78rem;white-space:nowrap}
+  .tab.on{background:var(--gold);color:#151515;font-weight:700;border-color:var(--gold)}
+  .tab .cnt{background:rgba(0,0,0,.18);border-radius:10px;padding:0 6px;font-size:.7rem}
+  .tab:not(.on) .cnt{background:var(--panel3);color:var(--hint)}
+  .secline{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin:2px 2px 11px}
+
+  /* action grid */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .act{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;transition:border-color .15s,transform .12s}
+  .act:hover{border-color:var(--gold);transform:translateY(-2px)}
+  .act .ic{width:38px;height:38px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:9px}
+  .act .t{font-weight:600;font-size:.92rem}
+  .act .d{color:var(--muted);font-size:.77rem;margin-top:3px}
+  .act .star{position:absolute;top:11px;right:11px;font-size:.6rem;color:var(--gold);background:rgba(212,175,55,.12);padding:2px 7px;border-radius:var(--pill)}
+  .assist{margin-top:14px;padding:12px;border-radius:var(--r-sm);background:rgba(212,175,55,.06);border:1px solid rgba(212,175,55,.22);text-align:center;color:var(--gold);font-size:.85rem;cursor:pointer}
+
+  /* modal / popup */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);backdrop-filter:blur(3px);z-index:100;display:none;align-items:flex-start;justify-content:center;padding:20px 12px;overflow:auto}
+  .overlay.on{display:flex}
+  .modal{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--gold);border-radius:var(--r-lg);box-shadow:var(--sh);overflow:hidden;animation:rise .18s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .mhead{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  .mbody{padding:16px 18px}
+  .close{margin:0;width:auto;background:none;border:0;color:var(--muted);font-size:1.4rem;line-height:1;padding:2px 6px}
+  .close:hover{color:var(--gold)}
+  .statusbadge{font-size:.7rem;padding:4px 10px;border-radius:var(--pill);background:var(--panel2);color:var(--muted)}
+  .statusbadge.member{background:var(--gold);color:#151515;font-weight:700}
+  .miniStat{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
+  .ms{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px}
+  .ms .l{font-size:.68rem;color:var(--muted)}
+  .ms .v{font-size:.95rem;font-weight:600;margin-top:2px}
+  .stampbar{height:9px;border-radius:6px;background:var(--panel3);margin:10px 0 5px;overflow:hidden}
+  .stampfill{height:100%;background:var(--gold);border-radius:6px;transition:width .5s}
+  .qagrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+  .qa{display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:var(--r-sm);background:var(--panel2);border:1px solid #33333b;color:var(--text);font-size:.86rem;font-weight:600}
+  .qa:hover{border-color:var(--gold);color:var(--gold)}
+  .qa.wide{grid-column:1/-1}
+  .subform{margin-top:12px;padding:12px;border-radius:var(--r-sm);background:var(--panel2);border:1px dashed #3a3a42}
+  .reclist{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 12px}
+  .reclineup{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .reclineup:last-child{border-bottom:0}
+
+  .msg{margin-top:11px;padding:11px 13px;border-radius:var(--r-sm);font-size:.9rem;display:none}
+  .msg.err{display:block;background:rgba(224,86,86,.12);border:1px solid var(--err);color:var(--err)}
+  .msg.ok{display:block;background:rgba(95,191,122,.1);border:1px solid var(--ok);color:var(--ok)}
+  .back{margin:0;width:auto;background:none;border:0;color:var(--muted);font-size:.82rem;padding:6px 0}
+  .hidden{display:none}
+  .paybtn{display:block;margin-top:9px;padding:12px;border-radius:var(--r-sm);background:var(--panel2);border:1px solid #33333b;color:var(--text);text-decoration:none;text-align:center;font-size:.9rem}
+  .paybtn:hover{border-color:var(--gold);color:var(--gold)}
+  .checkrow{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .checkrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--gold)}
+  .checkrow label{margin:0;font-size:.88rem;text-transform:none;letter-spacing:0;color:var(--text)}
+  .logout{background:none;border:0;color:var(--muted);font-size:.75rem;margin:16px auto 0;text-decoration:underline;width:auto;display:block;padding:6px}
+  .modtitle{font-size:1.05rem;font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div style="text-align:center;margin:8px 0 18px"><div class="htit">EM Passport</div><div class="hsub">Front Desk · Queen &amp; Andrew · 20 Mod</div></div>
+  <div class="card">
+    <label for="pin">Staff PIN</label>
+    <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="••••••" autocomplete="off">
+    <button class="btn" id="loginBtn" onclick="doLogin()">Enter</button>
+    <div id="loginMsg" class="msg"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <div class="hero">
+    <div class="hrow"><div class="hlogo">EM</div><div style="flex:1"><div class="htit">Front Desk</div><div class="hsub">EM Passport · quick actions</div></div></div>
+    <div class="stats">
+      <div class="stat"><div class="v" id="stToday">–</div><div class="l">bookings today</div></div>
+      <div class="stat"><div class="v" id="stChk">–</div><div class="l">checked in</div></div>
+      <div class="stat"><div class="v" id="stStaff">–</div><div class="l">on shift</div></div>
+    </div>
+  </div>
+
+  <div class="search"><input id="live" placeholder="Search student by name…" autocomplete="off"><div id="drop" class="drop"></div></div>
+
+  <div class="tabs">
+    <div class="tab on" data-t="classes" onclick="showTab('classes')">🕺 Check-in &amp; Classes <span class="cnt">4</span></div>
+    <div class="tab" data-t="students" onclick="showTab('students')">👤 Students &amp; Passport <span class="cnt">4</span></div>
+    <div class="tab" data-t="payments" onclick="showTab('payments')">💳 Payments <span class="cnt">4</span></div>
+    <div class="tab" data-t="reports" onclick="showTab('reports')">📊 Reports <span class="cnt">4</span></div>
+  </div>
+
+  <div id="tabBody"></div>
+  <div class="assist" onclick="alert('Coming next phase: the AI assistant answers questions and handles bookings here.')">💬 Free mode · ask the assistant <span style="opacity:.6">(coming soon)</span></div>
+  <button class="logout" onclick="doLogout()">Lock (clear PIN)</button>
+</div>
+
+<!-- STUDENT POPUP -->
+<div id="overlay" class="overlay" onclick="if(event.target===this)closeStudent()">
+  <div class="modal"><div id="modalContent"></div></div>
+</div>
+
+<script>
+/* ═══════════ CONFIG ═══════════ */
+const API_URL = "https://yoor32.app.n8n.cloud/webhook/front-desk";
+const CRM_LINKS = {
+  studio:      "https://www.notion.so/3936190090d18134a9f7d0b3f48c974d",
+  students:    "https://www.notion.so/948bd872740a4c6c8892f8db110c6ba3",
+  payments:    "https://www.notion.so/7f7e6f6157dc4a57b913997cc38b8d43",
+  memberships: "https://www.notion.so/93496f9b675f4f5b82bc30db0c39abcc",
+  winback:     "https://www.notion.so/948bd872740a4c6c8892f8db110c6ba3"
+};
+const LINK_URL = "https://yoor32.app.n8n.cloud/webhook/stripe-link"; // Stripe checkout-link generator (n8n)
+const LINK_SECRET = "em-frontdesk-2026"; // must match the secret in the n8n "Build Session Body" node
+const REPORT_URL = "https://yoor32.app.n8n.cloud/webhook/em-report"; // EM Reports API (weekly/monthly)
+// Stripe recurring Price IDs — ⚠️ TEST values. Swap for LIVE price IDs at go-live (re-run "Stripe Setup" in live mode).
+const PLAN_PRICE = {
+  "EM Passport — $24.99/mo": "price_1TqjZsHDfjs5Y7AfZlXwsmO5",
+  "EM Family — $249.99/mo (Passport + $225 team fee)": "price_1TqjZsHDfjs5Y7Afd2DONxAy"
+};
+// One-off checkout presets for the "Stripe pay links" panel
+const PAY_PRESETS = [
+  { label:"Drop-in class — $35", item:"Drop-in class", amount:35 },
+  { label:"Level Assessment — $20", item:"Level Assessment", amount:20 },
+  { label:"Workshop — $60", item:"Workshop", amount:60 },
+  { label:"Workshop (member) — $30", item:"Workshop (member)", amount:30 },
+  { label:"Course 8wk — $240", item:"Course (8-week)", amount:240 },
+  { label:"Course 8wk (member) — $120", item:"Course (8-week, member)", amount:120 }
+];
+const PLANS = ["EM Passport — $24.99/mo","EM Family — $249.99/mo (Passport + $225 team fee)"];
+const PAY_METHODS = ["Stripe","Cash","E-transfer","PayPal","Other"];
+const LADDER = [[10,"EM Badge"],[20,"EM Pen or Necklace"],[40,"EM T-Shirt"],[60,"Free Class"],[80,"Free Workshop"],[100,"Private Lesson"],[150,"Festival Ticket"]];
+/* ═══════════════════════════════ */
+
+let PIN = sessionStorage.getItem("em_pin") || "";
+let CUR = null; // current student in popup
+
+async function api(p){
+  const res = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:PIN,...p})});
+  let d={}; try{ d=await res.json(); }catch(e){ d={ok:false,error:"Bad response"}; }
+  if(res.status===401){ doLogout(); throw new Error("Invalid PIN — locked."); }
+  if(!res.ok && !d.error) d.error="Server error "+res.status;
+  return d;
+}
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function ini(n){ return String(n||"?").split(" ").filter(Boolean).slice(0,2).map(x=>x[0]).join("").toUpperCase(); }
+function pct(stamps){ const next=LADDER.find(l=>l[0]>stamps),prev=[...LADDER].reverse().find(l=>l[0]<=stamps); const lo=prev?prev[0]:0,hi=next?next[0]:(prev?prev[0]:10); return Math.min(100,Math.round(((stamps-lo)/Math.max(1,hi-lo))*100)); }
+/* Generate a Stripe checkout link via the n8n link generator, then open it. opts:{item,amount?,priceId?,email?} */
+async function genLink(opts){
+  try{
+    const res=await fetch(LINK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({secret:LINK_SECRET,...opts})});
+    let d={}; try{ d=await res.json(); }catch(e){}
+    if(res.ok && d && d.ok && d.url){ window.open(d.url,"_blank","noopener"); return {ok:true,url:d.url}; }
+    return {ok:false,error:(d&&d.error)||("Server "+res.status)};
+  }catch(e){ return {ok:false,error:e.message}; }
+}
+
+/* ── login ── */
+async function doLogin(){
+  const btn=document.getElementById("loginBtn"); btn.disabled=true;
+  PIN=document.getElementById("pin").value.trim();
+  try{ const r=await api({action:"today"}); if(r.ok!==undefined){ sessionStorage.setItem("em_pin",PIN); enterApp(r); } }
+  catch(e){ const m=document.getElementById("loginMsg"); m.className="msg err"; m.textContent=e.message; }
+  btn.disabled=false;
+}
+function enterApp(todayRes){
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  showTab("classes"); loadStats(todayRes);
+  bindLiveSearch();
+}
+function doLogout(){ PIN=""; CUR=null; sessionStorage.removeItem("em_pin"); document.getElementById("app").classList.add("hidden"); document.getElementById("login").classList.remove("hidden"); document.getElementById("pin").value=""; }
+
+async function loadStats(todayRes){
+  try{
+    const r = todayRes && todayRes.count!==undefined ? todayRes : await api({action:"today"});
+    document.getElementById("stToday").textContent = r.count ?? 0;
+    document.getElementById("stChk").textContent = "✓";
+    document.getElementById("stStaff").textContent = "1";
+  }catch(e){}
+}
+
+/* ── live search → popup ── */
+let _t;
+function bindLiveSearch(){
+  const box=document.getElementById("live"), drop=document.getElementById("drop");
+  box.oninput=()=>{ clearTimeout(_t); const q=box.value.trim(); if(q.length<2){ drop.className="drop"; drop.innerHTML=""; return; } _t=setTimeout(()=>runSearch(q),250); };
+  document.addEventListener("click",e=>{ if(!box.contains(e.target)&&!drop.contains(e.target)) drop.className="drop"; });
+}
+async function runSearch(q){
+  const drop=document.getElementById("drop");
+  try{
+    const r=await api({action:"search",query:q});
+    if(!r.ok||!r.results.length){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--muted)">No matches</div>'; return; }
+    drop.innerHTML=r.results.map(s=>'<div class="ditem" onclick="openStudent(\''+(s.passport||s.studentId)+'\')"><div class="avatar">'+ini(s.name)+'</div><div style="flex:1"><div style="font-weight:600;font-size:.9rem">'+esc(s.name)+'</div><div style="color:var(--muted);font-size:.76rem">'+esc(s.passport||"no passport")+(s.member?' · ✦ member':'')+' · '+s.stamps+' stamps</div></div><span style="color:var(--muted)">›</span></div>').join("");
+    drop.className="drop on";
+  }catch(e){ drop.className="drop"; }
+}
+
+/* ═══════════ STUDENT POPUP DASHBOARD ═══════════ */
+async function openStudent(idOrEmail){
+  document.getElementById("drop").className="drop";
+  document.getElementById("live").value="";
+  const ov=document.getElementById("overlay"); ov.classList.add("on");
+  document.getElementById("modalContent").innerHTML='<div class="mbody" style="text-align:center;color:var(--muted);padding:40px">Loading…</div>';
+  try{ const r=await api({action:"student",passport:idOrEmail}); if(!r.ok){ modalError(r.error||"Not found"); return; } CUR=r; renderStudent(r); }
+  catch(e){ modalError(e.message); }
+}
+function closeStudent(){ document.getElementById("overlay").classList.remove("on"); CUR=null; }
+function modalError(msg){ document.getElementById("modalContent").innerHTML='<div class="mhead"><div class="modtitle">Student</div><button class="close" onclick="closeStudent()">×</button></div><div class="mbody"><div class="msg err" style="display:block">'+esc(msg)+'</div></div>'; }
+
+function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); return d.toLocaleDateString([], {month:"short",day:"numeric"})+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function payStatusColor(s){ if(/attention|failed/i.test(s)) return "var(--err)"; if(/no payments/i.test(s)) return "var(--muted)"; return "var(--ok)"; }
+function renderStudent(r){
+  const p=r.member?pct(r.stamps):0;
+  const qr = r.passport ? '<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data='+encodeURIComponent(r.passport)+'" style="width:72px;height:72px;border-radius:8px;background:#fff;padding:3px">' : '';
+  // upcoming classes
+  const up = (r.upcoming||[]);
+  const upHtml = up.length
+    ? up.map(c=>'<div class="reclineup"><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDate(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+'</span></div>').join("")
+    : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No upcoming classes booked.</div>';
+  // payments
+  const pays=(r.payments||[]);
+  const payHtml = pays.length
+    ? pays.map(pm=>'<div class="reclineup"><span style="flex:1;font-size:.83rem">'+esc(pm.item||"Payment")+'</span><span style="font-weight:600;font-size:.83rem;color:'+(pm.amount<0?"var(--err)":"var(--text)")+'">'+(pm.amount<0?"-":"")+'$'+Math.abs(pm.amount)+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(pm.status||"")+'</span></div>').join("")
+    : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No payments on record.</div>';
+  let pend='';
+  if(r.member && r.pendingRewards && r.pendingRewards.length){
+    pend='<div class="secline" style="margin-top:14px">🎁 Rewards earned — deliver</div>'+r.pendingRewards.map(rw=>'<button class="btn ghost" style="margin-top:6px" onclick="qaReward(\''+esc(rw).replace(/\x27/g,"")+'\')">Deliver: '+esc(rw)+'</button>').join("");
+  }
+  const html =
+    '<div class="mhead"><div class="avatar" style="width:44px;height:44px;font-size:1rem">'+ini(r.studentName)+'</div>'+
+      '<div style="flex:1"><div class="modtitle">'+esc(r.studentName)+'</div><div style="color:var(--muted);font-size:.8rem">'+esc(r.passport||"no passport")+' · '+esc(r.email||"")+(r.phone?' · '+esc(r.phone):"")+'</div></div>'+
+      '<span class="statusbadge '+(r.member?'member':'')+'">'+(r.member?'MEMBER':'Non-member')+'</span>'+
+      '<button class="close" onclick="closeStudent()">×</button></div>'+
+    '<div class="mbody">'+
+      '<div style="display:flex;gap:12px;align-items:flex-start"><div style="flex:1">'+
+        '<div class="stampbar"><div class="stampfill" style="width:'+p+'%"></div></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:.82rem"><span>Stamps: <b style="color:var(--gold)">'+r.stamps+'</b></span><span style="color:var(--muted)">'+(r.nextReward?r.stampsToNext+' to '+esc(r.nextReward):'Top of ladder!')+'</span></div>'+
+      '</div>'+qr+'</div>'+
+      // membership + payment status row
+      '<div class="miniStat"><div class="ms"><div class="l">Membership</div><div class="v" style="font-size:.82rem">'+esc(r.membershipStatus||"—")+'</div></div><div class="ms"><div class="l">Payment status</div><div class="v" style="font-size:.85rem;color:'+payStatusColor(r.paymentStatus||"")+'">'+esc(r.paymentStatus||"—")+'</div></div></div>'+
+      pend+
+      // upcoming classes
+      '<div class="secline" style="margin-top:14px">📅 Upcoming classes &amp; services</div><div class="reclist">'+upHtml+'</div>'+
+      // recent payments
+      '<div class="secline" style="margin-top:14px">🧾 Recent payments</div><div class="reclist">'+payHtml+'</div>'+
+      // quick actions
+      '<div class="secline" style="margin-top:14px">⚡ Quick actions</div>'+
+      '<div class="qagrid">'+
+        '<button class="qa" onclick="qaCheckin()">✅ Check in</button>'+
+        '<button class="qa" onclick="qaPaymentForm()">💵 Record payment</button>'+
+        '<button class="qa" onclick="qaEnrollForm()">📝 Sign up</button>'+
+        (r.member?'<button class="qa" onclick="qaRenewForm()">🔄 Renew membership</button>':'<button class="qa" onclick="qaMembershipForm()">⭐ Start membership</button>')+
+      '</div>'+
+      '<button id="moreBtn" class="btn ghost" style="margin-top:8px;width:100%" onclick="toggleMore()">＋ More actions</button>'+
+      '<div id="moreActions" style="display:none;margin-top:8px">'+
+        '<div class="qagrid">'+
+          '<button class="qa" onclick="qaStripeForm()">💳 Stripe pay link</button>'+
+          '<button class="qa" onclick="qaSubForm()">🔗 Membership link (Stripe)</button>'+
+          (r.member?'<button class="qa" onclick="qaRewardForm()">🎁 Deliver reward</button>':'')+
+          (r.member?'<button class="qa" onclick="qaMembershipForm()">⭐ Add / change plan</button>':'')+
+          '<button class="qa" onclick="qaRefundForm()">↩️ Refund</button>'+
+          '<button class="qa" onclick="qaCompForm()">🏷️ Comp membership</button>'+
+          '<button class="qa" onclick="window.open(CRM_LINKS.students,\'_blank\')">🗂️ Full record (CRM)</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="qaZone"></div>'+
+      '<div id="mMsg" class="msg"></div>'+
+    '</div>';
+  document.getElementById("modalContent").innerHTML=html;
+}
+function mMsg(cls,txt){ const m=document.getElementById("mMsg"); m.className="msg "+cls; m.textContent=txt; }
+function scrollQa(){ const z=document.getElementById("qaZone"); if(z) z.scrollIntoView({behavior:"smooth",block:"nearest"}); }
+function toggleMore(){ const m=document.getElementById("moreActions"),b=document.getElementById("moreBtn"); if(!m)return; const show=m.style.display==="none"; m.style.display=show?"block":"none"; if(b) b.textContent=show?"− Fewer actions":"＋ More actions"; }
+function qaStripeForm(){ document.getElementById("qaZone").innerHTML='<div class="subform"><label>Item</label><input id="slItem" placeholder="e.g. Private lesson"><label>Amount (CAD)</label><input id="slAmt" type="number" inputmode="decimal" placeholder="75"><button class="btn" onclick="qaStripeGo()">💳 Generate Stripe link</button></div>'; scrollQa(); }
+async function qaStripeGo(){ const amount=Number(document.getElementById("slAmt").value); const item=document.getElementById("slItem").value||"EM payment"; if(!amount){ mMsg("err","Enter an amount"); return; } mMsg("ok","Opening Stripe checkout…"); const r=await genLink({item,amount,email:CUR.email}); mMsg(r.ok?"ok":"err", r.ok?"✓ Stripe link opened — records on payment":("Error: "+r.error)); }
+function qaSubForm(){ document.getElementById("qaZone").innerHTML='<div class="subform"><label>Plan</label><select id="slPlan">'+PLANS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaSubGo()">🔗 Generate subscription link</button><div style="color:var(--muted);font-size:.74rem;margin-top:6px">Membership + Member flag are created automatically when the customer pays.</div></div>'; scrollQa(); }
+async function qaSubGo(){ const plan=document.getElementById("slPlan").value; const priceId=PLAN_PRICE[plan]; if(!priceId){ mMsg("err","No Stripe price configured"); return; } mMsg("ok","Opening subscription checkout…"); const r=await genLink({item:plan,priceId,email:CUR.email}); mMsg(r.ok?"ok":"err", r.ok?"✓ Subscription link opened":("Error: "+r.error)); }
+function qaRewardForm(){ document.getElementById("qaZone").innerHTML='<div class="subform"><label>Reward</label><select id="rwSel">'+LADDER.map(l=>'<option value="'+esc(l[1])+'">'+l[0]+' stamps · '+esc(l[1])+'</option>').join("")+'</select><button class="btn" onclick="qaRewardGo()">🎁 Deliver reward</button><div style="color:var(--muted);font-size:.74rem;margin-top:6px">Server checks membership, stamp threshold, and blocks double-claims.</div></div>'; scrollQa(); }
+function qaRewardGo(){ const v=document.getElementById("rwSel").value; qaReward(v); }
+
+/* popup quick actions */
+async function qaCheckin(){
+  try{ const r=await api({action:"checkin",passport:CUR.passport||CUR.email});
+    if(!r.ok){ mMsg("err", r.error||"Check-in failed"); return; }
+    mMsg("ok", r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"")); refreshStudent();
+  }catch(e){ mMsg("err",e.message); }
+}
+async function qaReward(rw){
+  try{ const r=await api({action:"reward",passport:CUR.passport||CUR.email,reward:rw});
+    if(r.ok){ mMsg("ok","🎉 Delivered: "+r.delivered); refreshStudent(); } else mMsg("err", r.error||"Could not deliver");
+  }catch(e){ mMsg("err",e.message); }
+}
+function qaPaymentForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform"><label>Item</label><input id="qpItem" placeholder="e.g. Bachata 101, Assessment"><label>Amount (CAD)</label><input id="qpAmt" type="number" inputmode="decimal" placeholder="240"><label>Method</label><select id="qpMethod">'+PAY_METHODS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaPayment()">Record payment</button><button class="btn" onclick="qaPayLink()" style="margin-top:6px">💳 Generate Stripe link</button><div style="color:var(--muted);font-size:.74rem;margin-top:6px">Record payment = log cash/e-transfer already taken. Stripe link = create a checkout link for the customer to pay by card (auto-syncs to CRM).</div></div>';
+  document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+async function qaPayment(){
+  const amount=Number(document.getElementById("qpAmt").value);
+  if(!amount){ mMsg("err","Enter an amount"); return; }
+  try{ const r=await api({action:"payment",studentId:CUR.studentId,amount,method:document.getElementById("qpMethod").value,item:document.getElementById("qpItem").value});
+    if(r.ok){ mMsg("ok","✓ Recorded $"+r.recorded+" ("+r.method+")"); document.getElementById("qaZone").innerHTML=""; refreshStudent(); } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+async function qaPayLink(){
+  const amount=Number(document.getElementById("qpAmt").value); const item=document.getElementById("qpItem").value||"EM payment";
+  if(!amount){ mMsg("err","Enter an amount"); return; }
+  mMsg("ok","Opening Stripe checkout…");
+  const r=await genLink({item,amount,email:CUR.email});
+  mMsg(r.ok?"ok":"err", r.ok?"✓ Stripe link opened — records on payment":("Error: "+r.error));
+}
+function qaMembershipForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform"><label>Plan</label><select id="qmPlan">'+PLANS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaMembershipLink()">💳 Generate Stripe subscription link</button><div style="color:var(--muted);font-size:.74rem;margin-top:8px">Sets up <b>automatic monthly billing</b> — the membership &amp; Member flag are created automatically when the customer pays. Comp / no-billing memberships are under ＋ More actions.</div></div>';
+}
+async function qaMembershipLink(){
+  const plan=document.getElementById("qmPlan").value; const priceId=PLAN_PRICE[plan];
+  if(!priceId){ mMsg("err","No Stripe price configured for this plan"); return; }
+  mMsg("ok","Opening subscription checkout…");
+  const r=await genLink({item:plan,priceId,email:CUR.email});
+  mMsg(r.ok?"ok":"err", r.ok?"✓ Subscription link opened — membership activates on payment":("Error: "+r.error));
+}
+async function qaMembership(){
+  try{ const r=await api({action:"membership",studentId:CUR.studentId,name:CUR.studentName,plan:document.getElementById("qmPlan").value});
+    if(r.ok){ mMsg("ok","✓ "+r.plan+" started (comp — no billing)"); refreshStudent(); } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+function qaCompForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform"><div style="color:var(--err);font-size:.76rem;margin-bottom:6px;line-height:1.35">⚠️ <b>Comp membership — no recurring billing.</b> This marks the person as a member but Stripe will <b>never charge them</b>. Use only for staff/comps. For a paying member, use the Stripe subscription link instead.</div><label>Plan</label><select id="qmPlan">'+PLANS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" style="opacity:.85" onclick="qaComp()">🏷️ Create comp membership (no billing)</button></div>';
+  scrollQa();
+}
+function qaComp(){ if(!confirm("Create a COMP membership with NO recurring billing?\\n\\nThe member will NOT be charged monthly. For paying members, cancel and use the Stripe subscription link instead.")) return; qaMembership(); }
+function qaRenewForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform"><label>Plan</label><select id="qrPlan">'+PLANS.map(x=>'<option>'+x+'</option>').join("")+'</select><label>Amount charged (CAD)</label><input id="qrAmt" type="number" inputmode="decimal" value="24.99"><label>Method</label><select id="qrMethod">'+PAY_METHODS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaRenew()">Renew — extend 1 month</button></div>';
+  document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+async function qaRenew(){
+  try{ const r=await api({action:"renew",studentId:CUR.studentId,plan:document.getElementById("qrPlan").value,amount:Number(document.getElementById("qrAmt").value)||24.99,method:document.getElementById("qrMethod").value});
+    if(r.ok){ mMsg("ok","✓ Renewed · renews "+r.renewsOn); document.getElementById("qaZone").innerHTML=""; refreshStudent(); } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+function qaRefundForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform"><label>What is being refunded</label><input id="qfItem" placeholder="e.g. Ladies Styling Training"><label>Amount to refund (CAD)</label><input id="qfAmt" type="number" inputmode="decimal" placeholder="60"><label>Original method</label><select id="qfMethod">'+PAY_METHODS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaRefund()">Record refund</button><div style="color:var(--muted);font-size:.76rem;margin-top:8px">Logs a Refunded payment (negative amount). If paid by Stripe, issue the actual refund from Stripe.</div></div>';
+  document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+async function qaRefund(){
+  const amount=Number(document.getElementById("qfAmt").value);
+  if(!amount){ mMsg("err","Enter an amount"); return; }
+  try{ const r=await api({action:"refund",studentId:CUR.studentId,amount,method:document.getElementById("qfMethod").value,item:document.getElementById("qfItem").value});
+    if(r.ok){ mMsg("ok","✓ Refund recorded: $"+r.refunded); document.getElementById("qaZone").innerHTML=""; refreshStudent(); } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+let CATALOG=null;
+async function qaEnrollForm(){
+  document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading catalog…</div>';
+  document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
+  try{
+    if(!CATALOG){ const c=await api({action:"catalog"}); if(!c.ok){ mMsg("err","Could not load catalog"); return; } CATALOG=c; }
+    const items=[].concat(
+      (CATALOG.classes||[]).map(x=>({...x,kind:"class"})),
+      (CATALOG.events||[]).map(x=>({...x,kind:"event"}))
+    );
+    ENROLL_ITEMS=items;
+    const opts=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+') — $'+x.price+(x.memberPrice?(' / $'+x.memberPrice+' member'):'')+'</option>').join("");
+    document.getElementById("qaZone").innerHTML='<div class="subform"><label>Sign up for</label><select id="qeItem" onchange="qaEnrollPick()">'+opts+'</select><label>Amount to charge (CAD)</label><input id="qeAmt" type="number" inputmode="decimal"><label>Date &amp; time</label><input id="qeDate" type="datetime-local"><label>Payment method</label><select id="qeMethod">'+PAY_METHODS.map(x=>'<option>'+x+'</option>').join("")+'</select><button class="btn" onclick="qaEnroll()">Sign up student</button></div>';
+    qaEnrollPick();
+  }catch(e){ mMsg("err",e.message); }
+}
+let ENROLL_ITEMS=[];
+function qaEnrollPick(){
+  const i=Number(document.getElementById("qeItem").value); const it=ENROLL_ITEMS[i]; if(!it) return;
+  const price = (CUR.member && it.memberPrice) ? it.memberPrice : it.price;
+  document.getElementById("qeAmt").value = price;
+}
+async function qaEnroll(){
+  const i=Number(document.getElementById("qeItem").value); const it=ENROLL_ITEMS[i];
+  if(!it){ mMsg("err","Pick an item"); return; }
+  const dt=document.getElementById("qeDate").value;
+  try{ const r=await api({action:"enroll",studentId:CUR.studentId,name:CUR.studentName,item:it.name,itemType:it.kind,itemId:it.id,amount:Number(document.getElementById("qeAmt").value)||0,method:document.getElementById("qeMethod").value,scheduledDate:dt?new Date(dt).toISOString():""});
+    if(r.ok){ mMsg("ok","✓ Signed up for "+r.enrolled); document.getElementById("qaZone").innerHTML=""; refreshStudent(); } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+async function refreshStudent(){ try{ const r=await api({action:"student",passport:CUR.passport||CUR.email}); if(r.ok){ CUR=r; const keep=document.getElementById("mMsg"); const txt=keep?keep.textContent:"",cls=keep?keep.className:""; renderStudent(r); const m=document.getElementById("mMsg"); if(m){ m.className=cls; m.textContent=txt; } } }catch(e){} }
+
+/* ═══════════ TABS (card grid) ═══════════ */
+const TABS = {
+  classes:{ head:"Check-in & Classes · 4 actions", acts:[
+    {ico:"✅",t:"Check in",d:"Passport/email · +1 stamp (members)",star:1,fn:panelCheckin},
+    {ico:"📅",t:"Today's classes",d:"Who's booked today",fn:panelToday},
+    {ico:"👤",t:"Find student",d:"Open a student dashboard",fn:()=>document.getElementById("live").focus()},
+    {ico:"🗓️",t:"Class calendar",d:"Opens the CRM calendar",fn:()=>window.open(CRM_LINKS.studio,"_blank")}
+  ]},
+  students:{ head:"Students & Passport · 4 actions", acts:[
+    {ico:"➕",t:"New student",d:"Register a walk-in + passport #",star:1,fn:panelIntake},
+    {ico:"🔍",t:"Find student",d:"Search → popup dashboard",fn:()=>document.getElementById("live").focus()},
+    {ico:"⭐",t:"Start membership",d:"Find student, then start",fn:()=>document.getElementById("live").focus()},
+    {ico:"🗂️",t:"All students",d:"Opens the CRM Students DB",fn:()=>window.open(CRM_LINKS.students,"_blank")}
+  ]},
+  payments:{ head:"Payments · 4 actions", acts:[
+    {ico:"💵",t:"Record payment",d:"Find student, then charge",star:1,fn:()=>document.getElementById("live").focus()},
+    {ico:"🔗",t:"Stripe pay links",d:"Open a checkout link",fn:panelPayLinks},
+    {ico:"⭐",t:"Membership signup",d:"Find student, then start",fn:()=>document.getElementById("live").focus()},
+    {ico:"📒",t:"Payments ledger",d:"Opens the CRM Payments DB",fn:()=>window.open(CRM_LINKS.payments,"_blank")}
+  ]},
+  reports:{ head:"Reports · 6 actions", acts:[
+    {ico:"📈",t:"Weekly report",d:"Revenue · students · attendance · members",fn:()=>panelReport('week')},
+    {ico:"🗓️",t:"Monthly report",d:"Last 30 days, detailed",fn:()=>panelReport('month')},
+    {ico:"📊",t:"Today's summary",d:"Bookings & check-ins today",fn:panelToday},
+    {ico:"💰",t:"Payments ledger",d:"Opens the CRM Payments DB",fn:()=>window.open(CRM_LINKS.payments,"_blank")},
+    {ico:"⭐",t:"Active members",d:"Opens the Memberships DB",fn:()=>window.open(CRM_LINKS.memberships,"_blank")},
+    {ico:"🔄",t:"Win-back list",d:"Lapsed students to re-engage",fn:()=>window.open(CRM_LINKS.winback,"_blank")}
+  ]}
+};
+let PANEL=null;
+function showTab(t){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
+  PANEL=null;
+  const tab=TABS[t];
+  let h='<div class="secline">'+tab.head+'</div><div class="grid">';
+  tab.acts.forEach((a,i)=>{ h+='<div class="act" onclick="TABS[\''+t+'\'].acts['+i+'].fn()">'+(a.star?'<span class="star">★ frequent</span>':'')+'<div class="ic">'+a.ico+'</div><div class="t">'+a.t+'</div><div class="d">'+a.d+'</div></div>'; });
+  h+='</div>';
+  document.getElementById("tabBody").innerHTML=h;
+}
+function panelCard(html){ document.getElementById("tabBody").innerHTML='<div class="card"><button class="back" onclick="showTab(document.querySelector(\'.tab.on\').dataset.t)">‹ Back</button>'+html+'</div>'; }
+
+function panelCheckin(){
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><button class="btn" onclick="doCheckinPanel()">Check in</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
+  const el=document.getElementById("ci"); el.focus(); el.addEventListener("keydown",e=>{ if(e.key==="Enter")doCheckinPanel(); });
+}
+async function doCheckinPanel(){
+  const m=document.getElementById("ciMsg"); m.className="msg";
+  try{ const r=await api({action:"checkin",passport:document.getElementById("ci").value});
+    if(!r.ok){ m.className="msg err"; m.textContent=r.error; return; }
+    m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
+    document.getElementById("ci").value=""; document.getElementById("ci").focus();
+    document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+(r.passport||CUR&&CUR.passport||"")+'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function panelToday(){
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div id="td" style="color:var(--muted)">Loading…</div>');
+  try{ const r=await api({action:"today"}); const el=document.getElementById("td");
+    if(!r.ok){ el.textContent=r.error; return; }
+    if(r.count===0){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings today.</div>'; return; }
+    el.innerHTML=r.bookings.map(b=>{ const t=b.time?new Date(b.time).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"—"; return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem"><span><b style="color:var(--gold)">'+t+'</b> &nbsp;'+esc(b.booking)+'</span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>'; }).join("");
+  }catch(e){ document.getElementById("td").textContent=e.message; }
+}
+function fmtDay(iso){ if(!iso) return ""; return new Date(iso).toLocaleDateString([], {month:"short",day:"numeric"}); }
+function money(n){ n=Number(n||0); return (n<0?"-$":"$")+Math.abs(n).toFixed(2); }
+async function panelReport(range){
+  panelCard(
+    '<div class="modtitle" style="margin:6px 0 8px">📈 '+(range==='month'?'Monthly':'Weekly')+' report</div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:12px">'+
+      '<button class="btn ghost" style="flex:1'+(range!=='month'?';border-color:var(--gold);color:var(--gold)':'')+'" onclick="panelReport(\'week\')">This week</button>'+
+      '<button class="btn ghost" style="flex:1'+(range==='month'?';border-color:var(--gold);color:var(--gold)':'')+'" onclick="panelReport(\'month\')">This month</button>'+
+    '</div>'+
+    '<div id="rep" style="color:var(--muted);text-align:center;padding:14px">Loading…</div>'
+  );
+  try{
+    const res=await fetch(REPORT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:PIN,range})});
+    let d={}; try{ d=await res.json(); }catch(e){}
+    if(res.status===401){ doLogout(); return; }
+    const el=document.getElementById("rep"); if(!el) return;
+    if(!d.ok){ el.textContent=(d&&d.error)||"Could not load report"; return; }
+    el.innerHTML=renderReport(d);
+  }catch(e){ const el=document.getElementById("rep"); if(el){ el.style.color="var(--err)"; el.textContent=e.message; } }
+}
+function renderReport(d){
+  const rv=d.revenue||{}, st=d.students||{}, at=d.attendance||{}, mem=d.memberships||{};
+  const kpi=(l,v,s)=>'<div class="ms"><div class="l">'+l+'</div><div class="v">'+v+'</div>'+(s?'<div style="color:var(--muted);font-size:.68rem">'+s+'</div>':'')+'</div>';
+  const bm=rv.byMethod||{};
+  const bmHtml=Object.keys(bm).length?Object.keys(bm).map(k=>'<span style="display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.74rem;margin:2px 4px 2px 0">'+esc(k)+' '+money(bm[k])+'</span>').join(''):'<span style="color:var(--muted)">—</span>';
+  const abp=mem.activeByPlan||{};
+  const abpHtml=Object.keys(abp).length?Object.keys(abp).map(k=>'<div class="reclineup"><span style="flex:1;font-size:.82rem">'+esc(k)+'</span><b style="color:var(--gold)">'+abp[k]+'</b></div>').join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No active memberships.</div>';
+  const pays=(d.payments||[]);
+  const payHtml=pays.length?pays.map(p=>'<div class="reclineup"><span style="flex:1;font-size:.8rem">'+esc(p.item)+'</span><span style="font-weight:600;font-size:.8rem;color:'+(p.amount<0?"var(--err)":"var(--text)")+'">'+money(p.amount)+'</span><span style="color:var(--muted);font-size:.7rem;min-width:56px;text-align:right">'+esc(p.method)+'</span></div>').join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No payments in this period.</div>';
+  const studs=(st.list||[]);
+  const studHtml=studs.length?studs.map(s=>'<div class="reclineup"><span style="flex:1;font-size:.8rem">'+esc(s.name||"—")+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span>'+(s.member?'<span class="statusbadge member" style="font-size:.58rem">MEMBER</span>':'')+'</div>').join(''):'<div style="color:var(--muted);font-size:.82rem;padding:6px 0">No new students.</div>';
+  return ''+
+    '<div style="color:var(--muted);font-size:.78rem;margin-bottom:10px">'+fmtDay(d.start)+' – '+fmtDay(d.end)+'</div>'+
+    '<div class="miniStat">'+
+      kpi('Net revenue','<span style="color:var(--gold)">'+money(rv.net)+'</span>',(rv.count||0)+' payments')+
+      kpi('New students',st.count||0,(st.newMembers||0)+' new members')+
+      kpi('Check-ins',at.checkins||0,(at.uniqueStudents||0)+' unique · '+(at.stamps||0)+' stamps')+
+      kpi('Active members',mem.active||0,(mem.newInPeriod||0)+' new · '+(mem.cancelled||0)+' cancelled')+
+    '</div>'+
+    '<div class="secline" style="margin-top:14px">💰 Revenue</div>'+
+    '<div class="reclineup"><span style="flex:1;font-size:.82rem">Gross</span><b>'+money(rv.gross)+'</b></div>'+
+    '<div class="reclineup"><span style="flex:1;font-size:.82rem">Refunds</span><b style="color:var(--err)">'+money(rv.refunds)+'</b></div>'+
+    '<div class="reclineup"><span style="flex:1;font-size:.82rem">Net</span><b style="color:var(--gold)">'+money(rv.net)+'</b></div>'+
+    '<div style="margin-top:8px">'+bmHtml+'</div>'+
+    '<div class="secline" style="margin-top:14px">⭐ Active memberships by plan</div><div class="reclist">'+abpHtml+'</div>'+
+    '<div class="secline" style="margin-top:14px">🆕 New students ('+(st.count||0)+')</div><div class="reclist">'+studHtml+'</div>'+
+    '<div class="secline" style="margin-top:14px">🧾 Payments ('+pays.length+')</div><div class="reclist">'+payHtml+'</div>'+
+    '<button class="btn ghost" style="margin-top:12px;width:100%" onclick="window.print()">🖨 Print / save as PDF</button>';
+}
+function panelIntake(){
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">New student</div><label>Full name</label><input id="iName"><label>Email</label><input id="iEmail" type="email"><label>Phone</label><input id="iPhone" type="tel"><label>Passport # — blank to auto-assign</label><input id="iPass" placeholder="auto (EM-00XX)"><div class="checkrow"><input id="iMem" type="checkbox"><label for="iMem">EM Passport member ($24.99/mo)</label></div><button class="btn" onclick="doIntakePanel()">Register</button><div id="iMsg" class="msg"></div>');
+}
+async function doIntakePanel(){
+  const m=document.getElementById("iMsg"); m.className="msg";
+  const name=document.getElementById("iName").value.trim();
+  if(!name){ m.className="msg err"; m.textContent="Name required"; return; }
+  try{ const r=await api({action:"intake",name,email:document.getElementById("iEmail").value,phone:document.getElementById("iPhone").value,passport:document.getElementById("iPass").value,member:document.getElementById("iMem").checked});
+    if(r.ok){ m.className="msg ok"; m.innerHTML="✓ "+esc(r.name)+" registered · "+esc(r.passport); }
+    else { m.className="msg err"; m.textContent=r.error||"Could not register"; }
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+function panelPayLinks(){
+  panelCard(
+    '<div class="modtitle" style="margin:6px 0 4px">Generate a Stripe checkout link</div>'+
+    '<div style="color:var(--muted);font-size:.78rem;margin-bottom:10px">Creates a live Stripe checkout link and opens it in a new tab — open on the tablet or send to the customer. Completed payments sync into the CRM automatically.</div>'+
+    '<div class="modtitle" style="font-size:.82rem;margin:8px 0 4px">One-off payments</div>'+
+    PAY_PRESETS.map((p,i)=>'<button class="paybtn" onclick="payLinkPreset('+i+')">'+esc(p.label)+'</button>').join("")+
+    '<div class="subform" style="margin-top:10px"><label>Custom — item</label><input id="plItem" placeholder="e.g. Private lesson"><label>Amount (CAD)</label><input id="plAmt" type="number" inputmode="decimal" placeholder="75"><label>Customer email (optional)</label><input id="plEmail" type="email" placeholder="name@email.com"><button class="btn" onclick="payLinkCustom()">Generate one-off link</button></div>'+
+    '<div class="modtitle" style="font-size:.82rem;margin:14px 0 4px">Membership (recurring)</div>'+
+    PLANS.map(pl=>'<button class="paybtn" onclick="payLinkSub(this.dataset.plan)" data-plan="'+esc(pl)+'">'+esc(pl)+'</button>').join("")+
+    '<div id="plMsg" class="msg" style="margin-top:10px;display:none"></div>'
+  );
+}
+function plStatus(ok,txt){ const m=document.getElementById("plMsg"); if(!m)return; m.style.display="block"; m.className="msg "+(ok?"ok":"err"); m.textContent=txt; }
+async function payLinkPreset(i){ const p=PAY_PRESETS[i]; plStatus(true,"Opening checkout link…"); const r=await genLink({item:p.item,amount:p.amount}); plStatus(r.ok, r.ok?"✓ Link opened in a new tab":("Error: "+r.error)); }
+async function payLinkCustom(){ const item=document.getElementById("plItem").value||"EM payment"; const amount=Number(document.getElementById("plAmt").value); const email=document.getElementById("plEmail").value; if(!amount){ plStatus(false,"Enter an amount"); return; } plStatus(true,"Opening checkout link…"); const r=await genLink({item,amount,email}); plStatus(r.ok, r.ok?"✓ Link opened in a new tab":("Error: "+r.error)); }
+async function payLinkSub(plan){ const priceId=PLAN_PRICE[plan]; if(!priceId){ plStatus(false,"No price configured for "+plan); return; } plStatus(true,"Opening subscription checkout…"); const r=await genLink({item:plan,priceId}); plStatus(r.ok, r.ok?"✓ Subscription link opened":("Error: "+r.error)); }
+
+/* restore session */
+if(PIN){ enterApp(); }
+document.getElementById("pin") && document.getElementById("pin").addEventListener("keydown",e=>{ if(e.key==="Enter")doLogin(); });
+</script>
+<script>if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }</script>
+</body>
+</html>
