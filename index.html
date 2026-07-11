@@ -194,6 +194,8 @@ const PAY_PRESETS = [
 const PLANS = ["EM Passport — $24.99/mo","EM Family — $249.99/mo (Passport + $225 team fee)"];
 const PAY_METHODS = ["Stripe","Cash","E-transfer","PayPal","Other"];
 const LADDER = [[10,"EM Badge"],[20,"EM Pen or Necklace"],[40,"EM T-Shirt"],[60,"Free Class"],[80,"Free Workshop"],[100,"Private Lesson"],[150,"Festival Ticket"]];
+const STUDIO_ADDRESS = "Alchemy Studio — 20 Maud Street, 2nd Floor, Unit 205, Toronto, ON M5V 2M5";
+const WAIVER_TEXT = "I acknowledge that dance and physical movement involve inherent risks of injury. I voluntarily choose to participate in EM Passport classes, workshops, and private lessons. I release Queen & Andrew / EM Passport from liability for injuries arising from the ordinary risks of participation. I consent to being photographed or recorded for promotional and social media purposes unless I opt out in writing. I confirm that all information I have provided is accurate to the best of my knowledge.";
 /* ═══════════════════════════════ */
 
 let PIN = sessionStorage.getItem("em_pin") || "";
@@ -764,12 +766,13 @@ function renderReport(d){
     '<button class="btn ghost" style="margin-top:12px;width:100%" onclick="window.print()">🖨 Print / save as PDF</button>';
 }
 function panelIntake(){
-  panelCard('<div class="modtitle" style="margin:6px 0 4px">New student</div><label>Full name</label><input id="iName"><label>Email</label><input id="iEmail" type="email"><label>Phone</label><input id="iPhone" type="tel"><label>Passport # — blank to auto-assign</label><input id="iPass" placeholder="auto (EM-00XX)"><div class="checkrow"><input id="iMem" type="checkbox"><label for="iMem">EM Passport member ($24.99/mo)</label></div><button class="btn" onclick="doIntakePanel()">Register</button><div id="iMsg" class="msg"></div>');
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">New student</div><label>Full name</label><input id="iName"><label>Email</label><input id="iEmail" type="email"><label>Phone</label><input id="iPhone" type="tel"><label>Passport # — blank to auto-assign</label><input id="iPass" placeholder="auto (EM-00XX)"><div class="checkrow"><input id="iMem" type="checkbox"><label for="iMem">EM Passport member ($24.99/mo)</label></div><div style="color:var(--muted);font-size:.72rem;line-height:1.45;margin-top:12px;border:1px solid var(--line);border-radius:9px;padding:10px"><b style="color:var(--text)">Participation waiver &amp; consent</b><br>'+esc(WAIVER_TEXT)+'</div><div class="checkrow"><input id="iWaiver" type="checkbox"><label for="iWaiver">Student agrees to the waiver &amp; photo/video consent above</label></div><button class="btn" onclick="doIntakePanel()">Register</button><div id="iMsg" class="msg"></div>');
 }
 async function doIntakePanel(){
   const m=document.getElementById("iMsg"); m.className="msg";
   const name=document.getElementById("iName").value.trim();
   if(!name){ m.className="msg err"; m.textContent="Name required"; return; }
+  if(!document.getElementById("iWaiver").checked){ m.className="msg err"; m.textContent="The student must agree to the waiver to register"; return; }
   try{ const r=await api({action:"intake",name,email:document.getElementById("iEmail").value,phone:document.getElementById("iPhone").value,passport:document.getElementById("iPass").value,member:document.getElementById("iMem").checked});
     if(r.ok){ m.className="msg ok"; m.innerHTML="✓ "+esc(r.name)+" registered · "+esc(r.passport); }
     else { m.className="msg err"; m.textContent=r.error||"Could not register"; }
