@@ -173,10 +173,14 @@ const CRM_LINKS = {
 const LINK_URL = "https://yoor32.app.n8n.cloud/webhook/stripe-link"; // Stripe checkout-link generator (n8n)
 const LINK_SECRET = "em-frontdesk-2026"; // must match the secret in the n8n "Build Session Body" node
 const REPORT_URL = "https://yoor32.app.n8n.cloud/webhook/em-report"; // EM Reports API (weekly/monthly)
-// Stripe recurring Price IDs — ⚠️ TEST values. Swap for LIVE price IDs at go-live (re-run "Stripe Setup" in live mode).
+// Stripe recurring Price IDs. ACTIVE = TEST. AT GO-LIVE: comment the two TEST lines, uncomment the two LIVE lines, re-upload to GitHub.
 const PLAN_PRICE = {
+  // TEST (active now):
   "EM Passport — $24.99/mo": "price_1TqjZsHDfjs5Y7AfZlXwsmO5",
   "EM Family — $249.99/mo (Passport + $225 team fee)": "price_1TqjZsHDfjs5Y7Afd2DONxAy"
+  // LIVE (swap in at cutover):
+  // "EM Passport — $24.99/mo": "price_1TrTWNHDfjs5Y7AfAvzgjkYU",
+  // "EM Family — $249.99/mo (Passport + $225 team fee)": "price_1TrTWNHDfjs5Y7AfV1U5IS1n"
 };
 // One-off checkout presets for the "Stripe pay links" panel
 const PAY_PRESETS = [
@@ -341,9 +345,22 @@ function qaRewardForm(){ document.getElementById("qaZone").innerHTML='<div class
 function qaRewardGo(){ const v=document.getElementById("rwSel").value; qaReward(v); }
 
 /* popup quick actions */
+let CHECKIN_ITEMS=[];
 async function qaCheckin(){
-  try{ const r=await api({action:"checkin",passport:CUR.passport||CUR.email});
+  document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading classes…</div>'; scrollQa();
+  try{
+    const items=await loadCatalog();
+    CHECKIN_ITEMS=items;
+    const opts=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join("");
+    document.getElementById("qaZone").innerHTML='<div class="subform"><label>Class / service attending</label><select id="qcItem">'+opts+'</select><button class="btn" onclick="qaCheckinGo()">✅ Check in</button></div>'; scrollQa();
+  }catch(e){ mMsg("err",e.message); }
+}
+async function qaCheckinGo(){
+  const it=CHECKIN_ITEMS[Number(document.getElementById("qcItem").value)];
+  if(!it){ mMsg("err","Select a class"); return; }
+  try{ const r=await api({action:"checkin",passport:CUR.passport||CUR.email,classId:it.id,itemType:it.kind});
     if(!r.ok){ mMsg("err", r.error||"Check-in failed"); return; }
+    document.getElementById("qaZone").innerHTML="";
     mMsg("ok", r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"")); refreshStudent();
   }catch(e){ mMsg("err",e.message); }
 }
@@ -411,6 +428,10 @@ async function qaRefund(){
   }catch(e){ mMsg("err",e.message); }
 }
 let CATALOG=null;
+async function loadCatalog(){
+  if(!CATALOG){ const c=await api({action:"catalog"}); if(!c.ok) throw new Error("Could not load catalog"); CATALOG=c; }
+  return [].concat((CATALOG.classes||[]).map(x=>({...x,kind:"class"})),(CATALOG.events||[]).map(x=>({...x,kind:"event"})));
+}
 async function qaEnrollForm(){
   document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading catalog…</div>';
   document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -444,8 +465,9 @@ async function refreshStudent(){ try{ const r=await api({action:"student",passpo
 
 /* ═══════════ TABS (card grid) ═══════════ */
 const TABS = {
-  classes:{ head:"Check-in & Classes · 4 actions", acts:[
-    {ico:"✅",t:"Check in",d:"Passport/email · +1 stamp (members)",star:1,fn:panelCheckin},
+  classes:{ head:"Check-in & Classes · 5 actions", acts:[
+    {ico:"✅",t:"Check in",d:"Passport/email + class · +1 stamp (members)",star:1,fn:panelCheckin},
+    {ico:"📋",t:"Take attendance",d:"Class roster · check in one-by-one or all",star:1,fn:panelAttendance},
     {ico:"📅",t:"Today's classes",d:"Who's booked today",fn:panelToday},
     {ico:"👤",t:"Find student",d:"Open a student dashboard",fn:()=>document.getElementById("live").focus()},
     {ico:"🗓️",t:"Class calendar",d:"Opens the CRM calendar",fn:()=>window.open(CRM_LINKS.studio,"_blank")}
@@ -483,18 +505,77 @@ function showTab(t){
 }
 function panelCard(html){ document.getElementById("tabBody").innerHTML='<div class="card"><button class="back" onclick="showTab(document.querySelector(\'.tab.on\').dataset.t)">‹ Back</button>'+html+'</div>'; }
 
+let PANEL_ITEMS=[];
 function panelCheckin(){
-  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><button class="btn" onclick="doCheckinPanel()">Check in</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><label>Class / service attending</label><select id="ciItem"><option value="">Loading classes…</option></select><button class="btn" onclick="doCheckinPanel()">Check in</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
   const el=document.getElementById("ci"); el.focus(); el.addEventListener("keydown",e=>{ if(e.key==="Enter")doCheckinPanel(); });
+  loadCatalog().then(items=>{ PANEL_ITEMS=items; const s=document.getElementById("ciItem"); if(s) s.innerHTML=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join(""); }).catch(()=>{ const m=document.getElementById("ciMsg"); if(m){ m.className="msg err"; m.textContent="Could not load classes"; } });
 }
 async function doCheckinPanel(){
   const m=document.getElementById("ciMsg"); m.className="msg";
-  try{ const r=await api({action:"checkin",passport:document.getElementById("ci").value});
+  const it=PANEL_ITEMS[Number(document.getElementById("ciItem").value)];
+  if(!it){ m.className="msg err"; m.textContent="Select a class"; return; }
+  try{ const r=await api({action:"checkin",passport:document.getElementById("ci").value,classId:it.id,itemType:it.kind});
     if(!r.ok){ m.className="msg err"; m.textContent=r.error; return; }
     m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
     document.getElementById("ci").value=""; document.getElementById("ci").focus();
     document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+(r.passport||CUR&&CUR.passport||"")+'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
   }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+/* ── Take attendance (class roster + bulk check-in) ── */
+let ATT_ITEMS=[], ATT=null;
+async function panelAttendance(){
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Take attendance</div><label>Class / service</label><select id="atSel"><option value="">Loading classes…</option></select><button class="btn" onclick="loadRoster()">Load roster</button><div id="atMsg" class="msg"></div><div id="atList" style="margin-top:10px"></div>');
+  try{ const items=await loadCatalog(); ATT_ITEMS=items; const s=document.getElementById("atSel"); if(s) s.innerHTML=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join(""); }
+  catch(e){ atStatus("err",e.message); }
+}
+function atStatus(cls,txt){ const m=document.getElementById("atMsg"); if(!m)return; m.className="msg "+(cls||""); m.textContent=txt||""; }
+async function loadRoster(){
+  const it=ATT_ITEMS[Number(document.getElementById("atSel").value)];
+  if(!it){ atStatus("err","Select a class"); return; }
+  atStatus("ok","Loading roster…");
+  try{
+    const r=await api({action:"roster",classId:it.id,itemType:it.kind});
+    if(!r.ok){ atStatus("err",r.error||"Could not load roster"); return; }
+    ATT={classId:it.id,itemType:it.kind,students:r.students||[]};
+    atStatus("",""); renderRoster();
+  }catch(e){ atStatus("err",e.message); }
+}
+function attRowId(sid){ return "att-"+sid; }
+function renderRoster(){
+  const el=document.getElementById("atList"); if(!el||!ATT) return;
+  const st=ATT.students;
+  if(!st.length){ el.innerHTML='<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No students booked for this class.</div>'; return; }
+  const remaining=st.filter(s=>!s.checkedInToday).length;
+  el.innerHTML=
+    '<div class="secline">'+st.length+' booked · '+remaining+' to check in</div>'+
+    st.map(s=>'<div class="reclineup" id="'+attRowId(s.studentId)+'"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span><span class="att-st">'+(s.checkedInToday?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attOne(\''+s.studentId+'\')">Check in</button>')+'</span></div>').join("")+
+    (remaining?'<button class="btn" style="margin-top:12px" onclick="attAll()">✅ Check in all ('+remaining+')</button>':'');
+}
+function attApply(results){
+  for(const res of (results||[])){
+    const s=ATT.students.find(x=>x.studentId===res.studentId); if(s) s.checkedInToday=true;
+    const row=document.getElementById(attRowId(res.studentId)); if(!row) continue;
+    const st=row.querySelector(".att-st");
+    if(st) st.innerHTML = res.ok ? '<span style="color:var(--ok);font-size:.8rem">✓ '+esc(res.message||"Checked in")+'</span>' : '<span style="color:var(--muted);font-size:.74rem">'+esc(res.message||"Skipped")+'</span>';
+  }
+}
+async function attOne(sid){
+  atStatus("ok","Checking in…");
+  try{ const r=await api({action:"bulkcheckin",classId:ATT.classId,itemType:ATT.itemType,studentIds:[sid]});
+    if(r.results) attApply(r.results);
+    atStatus(r.ok?"ok":"err", r.ok?"✓ Done":(r.error||"Failed"));
+  }catch(e){ atStatus("err",e.message); }
+}
+async function attAll(){
+  const ids=ATT.students.filter(s=>!s.checkedInToday).map(s=>s.studentId);
+  if(!ids.length){ atStatus("ok","Everyone is already checked in"); return; }
+  atStatus("ok","Checking in "+ids.length+" students…");
+  try{ const r=await api({action:"bulkcheckin",classId:ATT.classId,itemType:ATT.itemType,studentIds:ids});
+    if(r.results) attApply(r.results);
+    const okd=(r.results||[]).filter(x=>x.ok).length;
+    atStatus(r.ok?"ok":"err", r.ok?("✓ "+okd+" checked in · "+((r.results||[]).length-okd)+" skipped"):(r.error||"Failed"));
+  }catch(e){ atStatus("err",e.message); }
 }
 async function panelToday(){
   panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div id="td" style="color:var(--muted)">Loading…</div>');
