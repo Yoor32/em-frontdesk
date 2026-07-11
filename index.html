@@ -349,10 +349,10 @@ let CHECKIN_ITEMS=[];
 async function qaCheckin(){
   document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading classes…</div>'; scrollQa();
   try{
-    const items=await loadCatalog();
+    const items=await checkinCatalog();
     CHECKIN_ITEMS=items;
-    const opts=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join("");
-    document.getElementById("qaZone").innerHTML='<div class="subform"><label>Class / service attending</label><select id="qcItem">'+opts+'</select><button class="btn" onclick="qaCheckinGo()">✅ Check in</button></div>'; scrollQa();
+    document.getElementById("qaZone").innerHTML='<div class="subform"><label>Class / service attending</label><select id="qcItem">'+catalogOptions(items)+'</select><button class="btn" onclick="qaCheckinGo()">✅ Check in</button></div>';
+    preselectClass(document.getElementById("qcItem"),items); scrollQa();
   }catch(e){ mMsg("err",e.message); }
 }
 async function qaCheckinGo(){
@@ -360,6 +360,7 @@ async function qaCheckinGo(){
   if(!it){ mMsg("err","Select a class"); return; }
   try{ const r=await api({action:"checkin",passport:CUR.passport||CUR.email,classId:it.id,itemType:it.kind});
     if(!r.ok){ mMsg("err", r.error||"Check-in failed"); return; }
+    rememberClass(it);
     document.getElementById("qaZone").innerHTML="";
     mMsg("ok", r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"")); refreshStudent();
   }catch(e){ mMsg("err",e.message); }
@@ -432,6 +433,48 @@ async function loadCatalog(){
   if(!CATALOG){ const c=await api({action:"catalog"}); if(!c.ok) throw new Error("Could not load catalog"); CATALOG=c; }
   return [].concat((CATALOG.classes||[]).map(x=>({...x,kind:"class"})),(CATALOG.events||[]).map(x=>({...x,kind:"event"})));
 }
+/* ── smart class picker: parse free-text schedules, rank "on now" first ── */
+function schedHits(x){
+  const now=new Date(); const dow=now.getDay(); const mins=now.getHours()*60+now.getMinutes();
+  const BEFORE=30, AFTER=75; // "on now" = 30 min before start → 75 min after start
+  if(x.kind==="event"){
+    if(!x.date) return {today:false,now:false,diff:9999};
+    const d=new Date(x.date); if(isNaN(d)) return {today:false,now:false,diff:9999};
+    const sameDay=d.toDateString()===now.toDateString();
+    const dm=d.getHours()*60+d.getMinutes();
+    return {today:sameDay, now:sameDay&&mins>=dm-BEFORE&&mins<=dm+AFTER, diff:sameDay?Math.abs(mins-dm):9999};
+  }
+  const s=String(x.schedule||"").toLowerCase();
+  const dayMap={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
+  const days=[]; s.replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues|tue|wed|thurs|thur|thu|fri|sat)\b/g,function(m,d){ const k=dayMap[d.slice(0,3)]; if(days.indexOf(k)===-1) days.push(k); return m; });
+  const times=[]; const re=/((?:\d{1,2}(?::\d{2})?)(?:\s*\/\s*\d{1,2}(?::\d{2})?)*)\s*(am|pm)/g; let m;
+  while((m=re.exec(s))){
+    const ap=m[2];
+    for(const part of m[1].split("/")){
+      const t=part.trim().split(":"); let h=(+t[0])%12; if(ap==="pm") h+=12;
+      times.push(h*60+(+(t[1]||0)));
+    }
+  }
+  const today=days.indexOf(dow)!==-1;
+  const diff=today&&times.length?Math.min.apply(null,times.map(t=>Math.abs(mins-t))):9999;
+  return {today, now:today&&times.some(t=>mins>=t-BEFORE&&mins<=t+AFTER), diff};
+}
+function catalogSorted(items){
+  items.forEach((x,i)=>{ const h=schedHits(x); x._now=h.now; x._today=h.today; x._diff=h.diff; x._i=i; });
+  items.sort((a,b)=>(((b._now?2:0)+(b._today?1:0))-((a._now?2:0)+(a._today?1:0)))||(a._diff-b._diff)||(a._i-b._i));
+  return items;
+}
+async function checkinCatalog(){ return catalogSorted(await loadCatalog()); }
+function catalogOptions(items){
+  return items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')'+(x._now?' · ▶ now':(x._today?' · today':''))+'</option>').join("");
+}
+function preselectClass(sel,items){
+  if(!sel) return;
+  let i=items.findIndex(x=>x._now);
+  if(i<0){ const last=sessionStorage.getItem("em_last_class"); i=items.findIndex(x=>x.id===last); }
+  sel.selectedIndex=i>=0?i:0;
+}
+function rememberClass(it){ try{ sessionStorage.setItem("em_last_class",it.id); }catch(e){} }
 async function qaEnrollForm(){
   document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading catalog…</div>';
   document.getElementById("qaZone").scrollIntoView({behavior:"smooth",block:"nearest"});
@@ -507,9 +550,12 @@ function panelCard(html){ document.getElementById("tabBody").innerHTML='<div cla
 
 let PANEL_ITEMS=[];
 function panelCheckin(){
-  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><label>Class / service attending</label><select id="ciItem"><option value="">Loading classes…</option></select><button class="btn" onclick="doCheckinPanel()">Check in</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><label>Class / service attending</label><select id="ciItem"><option value="">Loading classes…</option></select><button class="btn" onclick="doCheckinPanel()">Check in</button><button class="btn ghost" style="margin-top:8px" onclick="scanCheckin()">📷 Scan passport QR</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
   const el=document.getElementById("ci"); el.focus(); el.addEventListener("keydown",e=>{ if(e.key==="Enter")doCheckinPanel(); });
-  loadCatalog().then(items=>{ PANEL_ITEMS=items; const s=document.getElementById("ciItem"); if(s) s.innerHTML=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join(""); }).catch(()=>{ const m=document.getElementById("ciMsg"); if(m){ m.className="msg err"; m.textContent="Could not load classes"; } });
+  checkinCatalog().then(items=>{ PANEL_ITEMS=items; const s=document.getElementById("ciItem"); if(s){ s.innerHTML=catalogOptions(items); preselectClass(s,items); } }).catch(()=>{ const m=document.getElementById("ciMsg"); if(m){ m.className="msg err"; m.textContent="Could not load classes"; } });
+}
+function scanCheckin(){
+  startScan(code=>{ const el=document.getElementById("ci"); if(el) el.value=code; doCheckinPanel(); });
 }
 async function doCheckinPanel(){
   const m=document.getElementById("ciMsg"); m.className="msg";
@@ -517,6 +563,7 @@ async function doCheckinPanel(){
   if(!it){ m.className="msg err"; m.textContent="Select a class"; return; }
   try{ const r=await api({action:"checkin",passport:document.getElementById("ci").value,classId:it.id,itemType:it.kind});
     if(!r.ok){ m.className="msg err"; m.textContent=r.error; return; }
+    rememberClass(it);
     m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
     document.getElementById("ci").value=""; document.getElementById("ci").focus();
     document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+(r.passport||CUR&&CUR.passport||"")+'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
@@ -526,7 +573,7 @@ async function doCheckinPanel(){
 let ATT_ITEMS=[], ATT=null;
 async function panelAttendance(){
   panelCard('<div class="modtitle" style="margin:6px 0 4px">Take attendance</div><label>Class / service</label><select id="atSel"><option value="">Loading classes…</option></select><button class="btn" onclick="loadRoster()">Load roster</button><div id="atMsg" class="msg"></div><div id="atList" style="margin-top:10px"></div>');
-  try{ const items=await loadCatalog(); ATT_ITEMS=items; const s=document.getElementById("atSel"); if(s) s.innerHTML=items.map((x,i)=>'<option value="'+i+'">'+esc(x.name)+' ('+esc(x.type||x.kind)+')</option>').join(""); }
+  try{ const items=await checkinCatalog(); ATT_ITEMS=items; const s=document.getElementById("atSel"); if(s){ s.innerHTML=catalogOptions(items); preselectClass(s,items); } }
   catch(e){ atStatus("err",e.message); }
 }
 function atStatus(cls,txt){ const m=document.getElementById("atMsg"); if(!m)return; m.className="msg "+(cls||""); m.textContent=txt||""; }
@@ -538,6 +585,7 @@ async function loadRoster(){
     const r=await api({action:"roster",classId:it.id,itemType:it.kind});
     if(!r.ok){ atStatus("err",r.error||"Could not load roster"); return; }
     ATT={classId:it.id,itemType:it.kind,students:r.students||[]};
+    rememberClass(it);
     atStatus("",""); renderRoster();
   }catch(e){ atStatus("err",e.message); }
 }
@@ -545,12 +593,93 @@ function attRowId(sid){ return "att-"+sid; }
 function renderRoster(){
   const el=document.getElementById("atList"); if(!el||!ATT) return;
   const st=ATT.students;
-  if(!st.length){ el.innerHTML='<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No students booked for this class.</div>'; return; }
   const remaining=st.filter(s=>!s.checkedInToday).length;
-  el.innerHTML=
-    '<div class="secline">'+st.length+' booked · '+remaining+' to check in</div>'+
-    st.map(s=>'<div class="reclineup" id="'+attRowId(s.studentId)+'"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span><span class="att-st">'+(s.checkedInToday?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attOne(\''+s.studentId+'\')">Check in</button>')+'</span></div>').join("")+
-    (remaining?'<button class="btn" style="margin-top:12px" onclick="attAll()">✅ Check in all ('+remaining+')</button>':'');
+  const listHtml=st.length
+    ? '<div class="secline">'+st.length+' on the list · '+remaining+' to check in</div>'+
+      st.map(s=>'<div class="reclineup" id="'+attRowId(s.studentId)+'"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span><span class="att-st">'+(s.checkedInToday?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attOne(\''+s.studentId+'\')">Check in</button>')+'</span></div>').join("")+
+      (remaining?'<button class="btn" style="margin-top:12px" onclick="attAll()">✅ Check in all ('+remaining+')</button>':'')
+    : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No students booked for this class yet.</div>';
+  el.innerHTML=listHtml+
+    '<div class="secline" style="margin-top:16px">➕ Walk-in / not on the list</div>'+
+    '<input id="atFind" placeholder="Search name, passport or email" oninput="attSearchInput()">'+
+    '<div id="atFindRes"></div>'+
+    '<button class="btn ghost" style="margin-top:10px" onclick="attScanStart()">📷 Scan passport QR</button>';
+}
+let _at, ATT_FOUND=[];
+function attSearchInput(){ clearTimeout(_at); const q=document.getElementById("atFind").value.trim(); const res=document.getElementById("atFindRes"); if(q.length<2){ if(res) res.innerHTML=""; return; } _at=setTimeout(()=>attSearch(q),250); }
+async function attSearch(q){
+  const res=document.getElementById("atFindRes"); if(!res||!ATT) return;
+  try{
+    const r=await api({action:"search",query:q});
+    if(!r.ok||!r.results.length){ res.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No matches</div>'; return; }
+    ATT_FOUND=r.results;
+    res.innerHTML=r.results.map(s=>{
+      const inR=ATT.students.find(x=>x.studentId===s.studentId);
+      const done=inR&&inR.checkedInToday;
+      return '<div class="reclineup"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span>'+(done?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attWalkin(\''+s.studentId+'\')">Check in</button>')+'</div>';
+    }).join("");
+  }catch(e){ res.innerHTML='<div style="color:var(--err);font-size:.8rem">'+esc(e.message)+'</div>'; }
+}
+function attAbsorb(s){
+  const ex=ATT.students.find(x=>x.studentId===s.studentId);
+  if(ex) ex.checkedInToday=true;
+  else ATT.students.push({studentId:s.studentId,name:s.name||"",passport:s.passport||"",member:!!s.member,checkedInToday:true});
+  renderRoster();
+}
+async function attWalkin(sid){
+  const s=ATT_FOUND.find(x=>x.studentId===sid)||{studentId:sid};
+  atStatus("ok","Checking in…");
+  try{
+    const r=await api({action:"bulkcheckin",classId:ATT.classId,itemType:ATT.itemType,studentIds:[sid]});
+    const res=(r.results||[])[0]||{};
+    if(res.ok||/already/i.test(res.message||"")){ attAbsorb({studentId:sid,name:s.name,passport:s.passport,member:s.member}); }
+    atStatus(res.ok?"ok":"err", (res.ok?"✓ ":"")+(s.name?s.name+" — ":"")+(res.message||r.error||"Failed"));
+  }catch(e){ atStatus("err",e.message); }
+}
+function attScanStart(){
+  if(!ATT){ atStatus("err","Load a roster first"); return; }
+  startScan(code=>attScanGo(code));
+}
+async function attScanGo(code){
+  atStatus("ok","Checking in "+code+"…");
+  try{
+    const r=await api({action:"checkin",passport:code,classId:ATT.classId,itemType:ATT.itemType});
+    if(!r.ok){ if(r.already){ atStatus("err",r.error||"Already checked in"); } else atStatus("err",r.error||"Check-in failed"); return; }
+    attAbsorb({studentId:r.studentId,name:r.studentName,member:r.member});
+    atStatus("ok","✓ "+r.studentName+" — "+r.message);
+  }catch(e){ atStatus("err",e.message); }
+}
+/* ── QR scanner (lazy-loaded html5-qrcode) ── */
+let QR=null, QR_LIB=null;
+function loadQrLib(){
+  if(window.Html5Qrcode) return Promise.resolve();
+  return QR_LIB || (QR_LIB=new Promise((res,rej)=>{
+    const sc=document.createElement("script");
+    sc.src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    sc.onload=()=>res(); sc.onerror=()=>{ QR_LIB=null; rej(new Error("Could not load the scanner (offline?)")); };
+    document.head.appendChild(sc);
+  }));
+}
+async function startScan(onCode){
+  try{ await loadQrLib(); }catch(e){ alert(e.message); return; }
+  const wrap=document.createElement("div");
+  wrap.id="qrOverlay";
+  wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px";
+  wrap.innerHTML='<div style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Point the camera at the passport QR</div><div id="qrView" style="width:min(92vw,420px);border-radius:12px;overflow:hidden"></div><button class="btn ghost" style="max-width:420px;margin-top:14px" onclick="stopScan()">Cancel</button>';
+  document.body.appendChild(wrap);
+  QR=new Html5Qrcode("qrView");
+  try{
+    await QR.start({facingMode:"environment"},{fps:10,qrbox:{width:220,height:220}},txt=>{
+      const code=String(txt||"").trim(); stopScan(); if(code) onCode(code);
+    },()=>{});
+  }catch(e){
+    stopScan();
+    alert("Camera unavailable: "+((e&&e.message)||e)+"\n\nIf you are on the Duda /staff page, the embed iframe needs allow=\"camera\". Opening the dashboard directly (yoor32.github.io/em-frontdesk) also works.");
+  }
+}
+function stopScan(){
+  try{ if(QR){ const q=QR; QR=null; q.stop().then(()=>q.clear()).catch(()=>{}); } }catch(e){}
+  const w=document.getElementById("qrOverlay"); if(w) w.remove();
 }
 function attApply(results){
   for(const res of (results||[])){

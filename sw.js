@@ -1,7 +1,7 @@
 /* EM Passport Front Desk — service worker
    Network-first for the app page (always fresh UI when online, cached fallback offline).
    Cache-first for static assets. API calls are never cached. */
-const CACHE = 'em-frontdesk-v8';
+const CACHE = 'em-frontdesk-v9';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {
