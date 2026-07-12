@@ -200,6 +200,7 @@ const WAIVER_TEXT = "I acknowledge that dance and physical movement involve inhe
 
 let PIN = sessionStorage.getItem("em_pin") || "";
 let CUR = null; // current student in popup
+let UPCOMING = []; // current student's upcoming bookings
 
 async function api(p){
   const res = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:PIN,...p})});
@@ -282,8 +283,9 @@ function renderStudent(r){
   const qr = r.passport ? '<img src="https://api.qrserver.com/v1/create-qr-code/?size=72x72&data='+encodeURIComponent(r.passport)+'" style="width:72px;height:72px;border-radius:8px;background:#fff;padding:3px">' : '';
   // upcoming classes
   const up = (r.upcoming||[]);
+  UPCOMING = up;
   const upHtml = up.length
-    ? up.map(c=>'<div class="reclineup"><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDate(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+'</span></div>').join("")
+    ? up.map((c,i)=>'<div class="reclineup" '+(c.id?'style="cursor:pointer" onclick="qaBookingDetail(\''+c.id+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDate(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+(c.covered?' <span class="statusbadge member" style="font-size:.56rem">EM ✦</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+(c.id?' ›':'')+'</span></div>').join("")
     : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No upcoming classes booked.</div>';
   // payments
   const pays=(r.payments||[]);
@@ -503,7 +505,35 @@ async function qaEnroll(){
   if(!it){ mMsg("err","Pick an item"); return; }
   const dt=document.getElementById("qeDate").value;
   try{ const r=await api({action:"enroll",studentId:CUR.studentId,name:CUR.studentName,item:it.name,itemType:it.kind,itemId:it.id,amount:Number(document.getElementById("qeAmt").value)||0,method:document.getElementById("qeMethod").value,scheduledDate:dt?new Date(dt).toISOString():""});
-    if(r.ok){ mMsg("ok","✓ Signed up for "+r.enrolled); document.getElementById("qaZone").innerHTML=""; refreshStudent(); } else mMsg("err",r.error||"Failed");
+    if(r.ok){
+      const priceTxt = r.covered ? "$0 — covered by EM Passport membership" : ("$"+(r.amount??0)+(CUR.member?" (member price)":""));
+      mMsg("ok","✓ Signed up for "+r.enrolled+" — "+priceTxt+(r.pastDue?" · ⚠ membership past due":""));
+      document.getElementById("qaZone").innerHTML=""; refreshStudent();
+    } else mMsg("err",r.error||"Failed");
+  }catch(e){ mMsg("err",e.message); }
+}
+/* ── booking detail popup ── */
+async function qaBookingDetail(id){
+  document.getElementById("qaZone").innerHTML='<div class="subform" style="color:var(--muted)">Loading booking…</div>'; scrollQa();
+  try{
+    const r=await api({action:"booking",bookingId:id});
+    if(!r.ok){ mMsg("err",r.error||"Could not load booking"); document.getElementById("qaZone").innerHTML=""; return; }
+    const payColor = r.covered ? "var(--gold)" : (/unpaid|partially/i.test(r.payLabel) ? "var(--err)" : "var(--ok)");
+    const paysHtml = (r.payments||[]).length
+      ? '<div class="secline" style="margin-top:10px">Payments</div>'+r.payments.map(p=>'<div class="reclineup"><span style="flex:1;font-size:.8rem">'+esc(p.method||"—")+'</span><span style="font-weight:600;font-size:.8rem;color:'+(p.amount<0?"var(--err)":"var(--text)")+'">'+(p.amount<0?"-":"")+'$'+Math.abs(p.amount)+'</span><span style="color:var(--muted);font-size:.7rem">'+esc(p.status)+'</span></div>').join("")
+      : "";
+    const unpaid = !r.covered && /unpaid|partially/i.test(r.payLabel);
+    document.getElementById("qaZone").innerHTML=
+      '<div class="subform">'+
+        '<div class="modtitle" style="font-size:.95rem;margin-bottom:4px">'+esc(r.package||r.title)+'</div>'+
+        '<div style="color:var(--muted);font-size:.78rem">'+fmtDate(r.scheduledDate)+' · '+esc(r.status||"")+' · '+esc(r.bookingRef||"")+'</div>'+
+        '<div style="margin-top:10px;padding:10px;border-radius:9px;border:1px solid var(--line);font-size:.85rem;font-weight:600;color:'+payColor+'">'+
+          (r.covered?'✦ ':'')+esc(r.payLabel)+
+        '</div>'+
+        paysHtml+
+        (unpaid?'<button class="btn" style="margin-top:10px" onclick="qaPaymentForm();document.getElementById(\'qpItem\').value=\''+esc(r.package).replace(/\x27/g,"")+'\';document.getElementById(\'qpAmt\').value='+(r.amount||0)+'">💵 Record payment — $'+(r.amount||0)+'</button>':'')+
+        '<button class="btn ghost" style="margin-top:8px" onclick="document.getElementById(\'qaZone\').innerHTML=\'\'">Close</button>'+
+      '</div>'; scrollQa();
   }catch(e){ mMsg("err",e.message); }
 }
 async function refreshStudent(){ try{ const r=await api({action:"student",passport:CUR.passport||CUR.email}); if(r.ok){ CUR=r; const keep=document.getElementById("mMsg"); const txt=keep?keep.textContent:"",cls=keep?keep.className:""; renderStudent(r); const m=document.getElementById("mMsg"); if(m){ m.className=cls; m.textContent=txt; } } }catch(e){} }
