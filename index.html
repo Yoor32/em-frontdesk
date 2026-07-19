@@ -188,12 +188,14 @@ const PAY_PRESETS = [
   { label:"Level Assessment — $20", item:"Level Assessment", amount:20 },
   { label:"Workshop — $60", item:"Workshop", amount:60 },
   { label:"Workshop (member) — $30", item:"Workshop (member)", amount:30 },
-  { label:"Course 8wk — $240", item:"Course (8-week)", amount:240 },
-  { label:"Course 8wk (member) — $120", item:"Course (8-week, member)", amount:120 }
+  { label:"Course 8wk — $169.98", item:"Course (8-week)", amount:169.98 },
+  { label:"Course 8wk (member) — $84.99", item:"Course (8-week, member)", amount:84.99 },
+  { label:"Course split payment — $84.99", item:"Course (8-week, split 1 of 2)", amount:84.99 }
 ];
 const PLANS = ["EM Passport — $24.99/mo","EM Family — $249.99/mo (Passport + $225 team fee)"];
 const PAY_METHODS = ["Stripe","Cash","E-transfer","PayPal","Other"];
-const LADDER = [[10,"EM Badge"],[20,"EM Pen or Necklace"],[40,"EM T-Shirt"],[60,"Free Class"],[80,"Free Workshop"],[100,"Private Lesson"],[150,"Festival Ticket"]];
+/* Ladder v3 (15 tiers) — locked July 18, 2026. Must match Front Desk API nodes (Stamp Calc, Build Profile, Validate Reward) and the Notion Rewards Log "Reward" select EXACTLY. */
+const LADDER = [[10,"EM Badge"],[20,"Personalized Pen"],[30,"Personalized Keychain"],[40,"Personalized Water Bottle"],[50,"Personalized Tumbler"],[60,"Personalized T-Shirt"],[70,"EM Tote Bag"],[80,"EM Cap"],[90,"EM Hoodie"],[100,"Free Workshop Ticket"],[110,"Free Private Lesson"],[120,"Coffee Date with Queen & Andrew"],[130,"Ambassador Gift Box"],[140,"EM Jacket"],[150,"Festival Ticket"]];
 const STUDIO_ADDRESS = "Alchemy Studio — 20 Maud Street, 2nd Floor, Unit 205, Toronto, ON M5V 2M5";
 const WAIVER_TEXT = "I acknowledge that dance and physical movement involve inherent risks of injury. I voluntarily choose to participate in EM Passport classes, workshops, and private lessons. I release Queen & Andrew / EM Passport from liability for injuries arising from the ordinary risks of participation. I consent to being photographed or recorded for promotional and social media purposes unless I opt out in writing. I confirm that all information I have provided is accurate to the best of my knowledge.";
 /* ═══════════════════════════════ */
