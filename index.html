@@ -755,13 +755,25 @@ async function attAll(){
     atStatus(r.ok?"ok":"err", r.ok?("✓ "+okd+" checked in · "+((r.results||[]).length-okd)+" skipped"):(r.error||"Failed"));
   }catch(e){ atStatus("err",e.message); }
 }
+let DESK_DAY = businessDay();
 async function panelToday(){
-  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div id="td" style="color:var(--muted)">Loading…</div>');
-  try{ const r=await api({action:"today"}); const el=document.getElementById("td");
-    if(!r.ok){ el.textContent=r.error; return; }
-    if(r.count===0){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings today.</div>'; return; }
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(-1)">◀</button><input id="tdDate" type="date" style="flex:1" value="'+DESK_DAY+'" onchange="tdPick(this.value)"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="tdToday()">Today</button></div><div id="tdLabel" class="secline"></div><div id="td" style="color:var(--muted)">Loading…</div>');
+  loadDay();
+}
+const shift = n => { const [y,m,dd]=DESK_DAY.split('-').map(Number);
+  const t=new Date(Date.UTC(y,m-1,dd+n,12)); DESK_DAY=tzYMD(t); loadDay(); };
+function tdToday(){ DESK_DAY=businessDay(); loadDay(); }
+function tdPick(v){ if(v){ DESK_DAY=v; loadDay(); } }
+async function loadDay(){
+  const dEl=document.getElementById("tdDate"); if(dEl) dEl.value=DESK_DAY;
+  try{
+    const r=await api({action:'today', date: DESK_DAY});
+    const el=document.getElementById("td"), lbl=document.getElementById("tdLabel"); if(!el) return;
+    if(!r.ok){ el.textContent=r.error||"Could not load"; return; }
+    if(lbl) lbl.textContent=DESK_DAY+' · '+(r.timezone||TZ)+' · '+(r.count??0)+' booking'+(r.count===1?'':'s');
+    if(!r.count){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings on this day.</div>'; return; }
     el.innerHTML=r.bookings.map(b=>{ const t=b.time?_fTime.format(new Date(b.time)):"—"; return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem"><span><b style="color:var(--gold)">'+t+'</b> &nbsp;'+esc(b.booking)+'</span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>'; }).join("");
-  }catch(e){ document.getElementById("td").textContent=e.message; }
+  }catch(e){ const el=document.getElementById("td"); if(el){ el.style.color="var(--err)"; el.textContent=e.message; } }
 }
 function fmtDay(iso){ if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return _fDay.format(d); }
 function money(n){ n=Number(n||0); return (n<0?"-$":"$")+Math.abs(n).toFixed(2); }
