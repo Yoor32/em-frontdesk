@@ -275,10 +275,10 @@ async function runSearch(q){
   const drop=document.getElementById("drop");
   try{
     const r=await api({action:"search",query:q});
-    if(!r.ok||!r.results.length){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--muted)">No matches</div>'; return; }
+    if(!r.ok || !Array.isArray(r.results) || !r.results.length){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--muted)">No matches — try their full name</div>'; return; }
     drop.innerHTML=r.results.map(s=>'<div class="ditem" onclick="openStudent(\''+esc(s.passport||"")+'\',\''+esc(s.studentId||"")+'\')"><div class="avatar">'+ini(s.name)+'</div><div style="flex:1"><div style="font-weight:600;font-size:.9rem">'+esc(s.name)+'</div><div style="color:var(--muted);font-size:.76rem">'+esc(s.passport||"no passport")+(s.member?' · ✦ member':'')+' · '+s.stamps+' stamps</div></div><span style="color:var(--muted)">›</span></div>').join("");
     drop.className="drop on";
-  }catch(e){ drop.className="drop"; }
+  }catch(e){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--err)">'+esc(e.message||"Search failed")+'</div>'; }
 }
 
 /* ═══════════ STUDENT POPUP DASHBOARD ═══════════ */
@@ -660,7 +660,7 @@ async function attSearch(q){
   const res=document.getElementById("atFindRes"); if(!res||!ATT) return;
   try{
     const r=await api({action:"search",query:q});
-    if(!r.ok||!r.results.length){ res.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No matches</div>'; return; }
+    if(!r.ok || !Array.isArray(r.results) || !r.results.length){ res.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No matches — try their full name</div>'; return; }
     ATT_FOUND=r.results;
     res.innerHTML=r.results.map(s=>{
       const inR=ATT.students.find(x=>x.studentId===s.studentId);
