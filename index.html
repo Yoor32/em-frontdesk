@@ -204,6 +204,22 @@ let PIN = sessionStorage.getItem("em_pin") || "";
 let CUR = null; // current student in popup
 let UPCOMING = []; // current student's upcoming bookings
 
+/* ---- Toronto time — the studio's business day ------------------------- */
+const TZ = 'America/Toronto';
+const _fDate = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year:'numeric', month:'2-digit', day:'2-digit' });
+const _fDay  = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, weekday:'short', month:'short', day:'numeric' });
+const _fDayShort = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, month:'short', day:'numeric' });
+const _fTime = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour:'numeric', minute:'2-digit', hour12:true });
+function tzYMD(v){ const d = v instanceof Date ? v : new Date(v); return isNaN(d) ? '' : _fDate.format(d); }
+function businessDay(){ return tzYMD(new Date()); }
+function tzParts(v){
+  const d = v instanceof Date ? v : new Date(v);
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(d);
+  const g = k => (p.find(x => x.type === k) || {}).value;
+  const DOW = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  return { dow: DOW[g('weekday')], mins: (+g('hour')) * 60 + (+g('minute')) };
+}
+
 async function api(p){
   const res = await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:PIN,...p})});
   let d={}; try{ d=await res.json(); }catch(e){ d={ok:false,error:"Bad response"}; }
@@ -260,25 +276,26 @@ async function runSearch(q){
   const drop=document.getElementById("drop");
   try{
     const r=await api({action:"search",query:q});
-    if(!r.ok||!r.results.length){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--muted)">No matches</div>'; return; }
-    drop.innerHTML=r.results.map(s=>'<div class="ditem" onclick="openStudent(\''+(s.passport||s.studentId)+'\')"><div class="avatar">'+ini(s.name)+'</div><div style="flex:1"><div style="font-weight:600;font-size:.9rem">'+esc(s.name)+'</div><div style="color:var(--muted);font-size:.76rem">'+esc(s.passport||"no passport")+(s.member?' · ✦ member':'')+' · '+s.stamps+' stamps</div></div><span style="color:var(--muted)">›</span></div>').join("");
+    if(!r.ok || !Array.isArray(r.results) || !r.results.length){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--muted)">No matches — try their full name</div>'; return; }
+    drop.innerHTML=r.results.map(s=>'<div class="ditem" onclick="openStudent(\''+esc(s.passport||"")+'\',\''+esc(s.studentId||"")+'\')"><div class="avatar">'+ini(s.name)+'</div><div style="flex:1"><div style="font-weight:600;font-size:.9rem">'+esc(s.name)+'</div><div style="color:var(--muted);font-size:.76rem">'+esc(s.passport||"no passport")+(s.member?' · ✦ member':'')+' · '+s.stamps+' stamps</div></div><span style="color:var(--muted)">›</span></div>').join("");
     drop.className="drop on";
-  }catch(e){ drop.className="drop"; }
+  }catch(e){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--err)">'+esc(e.message||"Search failed")+'</div>'; }
 }
 
 /* ═══════════ STUDENT POPUP DASHBOARD ═══════════ */
-async function openStudent(idOrEmail){
+async function openStudent(idOrEmail, studentId){
   document.getElementById("drop").className="drop";
   document.getElementById("live").value="";
   const ov=document.getElementById("overlay"); ov.classList.add("on");
   document.getElementById("modalContent").innerHTML='<div class="mbody" style="text-align:center;color:var(--muted);padding:40px">Loading…</div>';
-  try{ const r=await api({action:"student",passport:idOrEmail}); if(!r.ok){ modalError(r.error||"Not found"); return; } CUR=r; renderStudent(r); }
+  try{ const r=await api({action:"student",passport:idOrEmail||"",studentId:studentId||""}); if(!r.ok){ modalError((r.error||"Student not found")+(studentId?"":" — this student has no passport number yet.")); return; } CUR=r; renderStudent(r); }
   catch(e){ modalError(e.message); }
 }
 function closeStudent(){ document.getElementById("overlay").classList.remove("on"); CUR=null; }
 function modalError(msg){ document.getElementById("modalContent").innerHTML='<div class="mhead"><div class="modtitle">Student</div><button class="close" onclick="closeStudent()">×</button></div><div class="mbody"><div class="msg err" style="display:block">'+esc(msg)+'</div></div>'; }
 
-function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); return d.toLocaleDateString([], {month:"short",day:"numeric"})+" "+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); if(isNaN(d)) return "—"; return _fDay.format(d)+" "+_fTime.format(d); }
+function fmtDateShort(iso){ if(!iso) return "—"; const d=new Date(iso); if(isNaN(d)) return "—"; return _fDayShort.format(d)+" "+_fTime.format(d); }
 function payStatusColor(s){ if(/attention|failed/i.test(s)) return "var(--err)"; if(/no payments/i.test(s)) return "var(--muted)"; return "var(--ok)"; }
 function renderStudent(r){
   const p=r.member?pct(r.stamps):0;
@@ -287,7 +304,7 @@ function renderStudent(r){
   const up = (r.upcoming||[]);
   UPCOMING = up;
   const upHtml = up.length
-    ? up.map((c,i)=>'<div class="reclineup" '+(c.id?'style="cursor:pointer" onclick="qaBookingDetail(\''+c.id+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDate(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+(c.covered?' <span class="statusbadge member" style="font-size:.56rem">EM ✦</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+(c.id?' ›':'')+'</span></div>').join("")
+    ? up.map((c,i)=>'<div class="reclineup" '+(c.id?'style="cursor:pointer" onclick="qaBookingDetail(\''+c.id+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDateShort(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+(c.covered?' <span class="statusbadge member" style="font-size:.56rem">EM ✦</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+(c.id?' ›':'')+'</span></div>').join("")
     : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No upcoming classes booked.</div>';
   // payments
   const pays=(r.payments||[]);
@@ -441,13 +458,13 @@ async function loadCatalog(){
 }
 /* ── smart class picker: parse free-text schedules, rank "on now" first ── */
 function schedHits(x){
-  const now=new Date(); const dow=now.getDay(); const mins=now.getHours()*60+now.getMinutes();
+  const now=new Date(); const {dow,mins}=tzParts(now);
   const BEFORE=30, AFTER=75; // "on now" = 30 min before start → 75 min after start
   if(x.kind==="event"){
     if(!x.date) return {today:false,now:false,diff:9999};
     const d=new Date(x.date); if(isNaN(d)) return {today:false,now:false,diff:9999};
-    const sameDay=d.toDateString()===now.toDateString();
-    const dm=d.getHours()*60+d.getMinutes();
+    const sameDay=tzYMD(d)===tzYMD(now);
+    const dm=tzParts(d).mins;
     return {today:sameDay, now:sameDay&&mins>=dm-BEFORE&&mins<=dm+AFTER, diff:sameDay?Math.abs(mins-dm):9999};
   }
   const s=String(x.schedule||"").toLowerCase();
@@ -600,7 +617,7 @@ async function doCheckinPanel(){
     rememberClass(it);
     m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
     document.getElementById("ci").value=""; document.getElementById("ci").focus();
-    document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+(r.passport||CUR&&CUR.passport||"")+'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
+    document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+esc(r.passport||CUR&&CUR.passport||"")+'\',\'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
   }catch(e){ m.className="msg err"; m.textContent=e.message; }
 }
 /* ── Take attendance (class roster + bulk check-in) ── */
@@ -630,7 +647,7 @@ function renderRoster(){
   const remaining=st.filter(s=>!s.checkedInToday).length;
   const listHtml=st.length
     ? '<div class="secline">'+st.length+' on the list · '+remaining+' to check in</div>'+
-      st.map(s=>'<div class="reclineup" id="'+attRowId(s.studentId)+'"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span><span class="att-st">'+(s.checkedInToday?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attOne(\''+s.studentId+'\')">Check in</button>')+'</span></div>').join("")+
+      st.map(s=>'<div class="reclineup" id="'+attRowId(s.studentId)+'"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem;cursor:pointer" onclick="openStudent(\'\',\''+esc(s.studentId)+'\')">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span><span class="att-st">'+(s.checkedInToday?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attOne(\''+s.studentId+'\')">Check in</button>')+'</span></div>').join("")+
       (remaining?'<button class="btn" style="margin-top:12px" onclick="attAll()">✅ Check in all ('+remaining+')</button>':'')
     : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No students booked for this class yet.</div>';
   el.innerHTML=listHtml+
@@ -645,12 +662,12 @@ async function attSearch(q){
   const res=document.getElementById("atFindRes"); if(!res||!ATT) return;
   try{
     const r=await api({action:"search",query:q});
-    if(!r.ok||!r.results.length){ res.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No matches</div>'; return; }
+    if(!r.ok || !Array.isArray(r.results) || !r.results.length){ res.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No matches — try their full name</div>'; return; }
     ATT_FOUND=r.results;
     res.innerHTML=r.results.map(s=>{
       const inR=ATT.students.find(x=>x.studentId===s.studentId);
       const done=inR&&inR.checkedInToday;
-      return '<div class="reclineup"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span>'+(done?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attWalkin(\''+s.studentId+'\')">Check in</button>')+'</div>';
+      return '<div class="reclineup"><div class="avatar" style="width:28px;height:28px;font-size:.7rem">'+ini(s.name)+'</div><span style="flex:1;font-size:.86rem;cursor:pointer" onclick="openStudent(\'\',\''+esc(s.studentId)+'\')">'+esc(s.name)+(s.member?' <span class="statusbadge member" style="font-size:.56rem">M</span>':'')+' <span style="color:var(--muted);font-size:.72rem">'+esc(s.passport||"")+'</span></span>'+(done?'<span style="color:var(--ok);font-size:.8rem">✓ Checked in</span>':'<button class="btn ghost" style="width:auto;margin:0;padding:7px 12px;font-size:.78rem" onclick="attWalkin(\''+s.studentId+'\')">Check in</button>')+'</div>';
     }).join("");
   }catch(e){ res.innerHTML='<div style="color:var(--err);font-size:.8rem">'+esc(e.message)+'</div>'; }
 }
@@ -740,15 +757,29 @@ async function attAll(){
     atStatus(r.ok?"ok":"err", r.ok?("✓ "+okd+" checked in · "+((r.results||[]).length-okd)+" skipped"):(r.error||"Failed"));
   }catch(e){ atStatus("err",e.message); }
 }
+let DESK_DAY = businessDay();
 async function panelToday(){
-  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div id="td" style="color:var(--muted)">Loading…</div>');
-  try{ const r=await api({action:"today"}); const el=document.getElementById("td");
-    if(!r.ok){ el.textContent=r.error; return; }
-    if(r.count===0){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings today.</div>'; return; }
-    el.innerHTML=r.bookings.map(b=>{ const t=b.time?new Date(b.time).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}):"—"; return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem"><span><b style="color:var(--gold)">'+t+'</b> &nbsp;'+esc(b.booking)+'</span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>'; }).join("");
-  }catch(e){ document.getElementById("td").textContent=e.message; }
+  DESK_DAY = businessDay();
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(-1)">◀</button><input id="tdDate" type="date" style="flex:1" value="'+DESK_DAY+'" onchange="tdPick(this.value)"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="tdToday()">Today</button></div><div id="tdLabel" class="secline"></div><div id="td" style="color:var(--muted)">Loading…</div>');
+  loadDay();
 }
-function fmtDay(iso){ if(!iso) return ""; return new Date(iso).toLocaleDateString([], {month:"short",day:"numeric"}); }
+const shift = n => { const [y,m,dd]=DESK_DAY.split('-').map(Number);
+  const t=new Date(Date.UTC(y,m-1,dd+n,12)); DESK_DAY=tzYMD(t); loadDay(); };
+function tdToday(){ DESK_DAY=businessDay(); loadDay(); }
+function tdPick(v){ if(v){ DESK_DAY=v; loadDay(); } }
+async function loadDay(){
+  const dEl=document.getElementById("tdDate"); if(dEl) dEl.value=DESK_DAY;
+  try{
+    const r=await api({action:'today', date: DESK_DAY});
+    const el=document.getElementById("td"), lbl=document.getElementById("tdLabel"); if(!el) return;
+    el.style.color="";
+    if(!r.ok){ el.textContent=r.error||"Could not load"; return; }
+    if(lbl) lbl.textContent=DESK_DAY+' · '+(r.timezone||TZ)+' · '+(r.count??0)+' booking'+(r.count===1?'':'s');
+    if(!r.count){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings on this day.</div>'; return; }
+    el.innerHTML=r.bookings.map(b=>{ const t=b.time?_fTime.format(new Date(b.time)):"—"; return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem"><span><b style="color:var(--gold)">'+t+'</b> &nbsp;'+esc(b.booking)+'</span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>'; }).join("");
+  }catch(e){ const el=document.getElementById("td"); if(el){ el.style.color="var(--err)"; el.textContent=e.message; } }
+}
+function fmtDay(iso){ if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return _fDay.format(d); }
 function money(n){ n=Number(n||0); return (n<0?"-$":"$")+Math.abs(n).toFixed(2); }
 async function panelReport(range){
   panelCard(
