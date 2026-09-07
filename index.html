@@ -770,6 +770,7 @@ async function loadDay(){
   try{
     const r=await api({action:'today', date: DESK_DAY});
     const el=document.getElementById("td"), lbl=document.getElementById("tdLabel"); if(!el) return;
+    el.style.color="";
     if(!r.ok){ el.textContent=r.error||"Could not load"; return; }
     if(lbl) lbl.textContent=DESK_DAY+' · '+(r.timezone||TZ)+' · '+(r.count??0)+' booking'+(r.count===1?'':'s');
     if(!r.count){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings on this day.</div>'; return; }
