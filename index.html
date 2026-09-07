@@ -757,6 +757,7 @@ async function attAll(){
 }
 let DESK_DAY = businessDay();
 async function panelToday(){
+  DESK_DAY = businessDay();
   panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(-1)">◀</button><input id="tdDate" type="date" style="flex:1" value="'+DESK_DAY+'" onchange="tdPick(this.value)"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="tdToday()">Today</button></div><div id="tdLabel" class="secline"></div><div id="td" style="color:var(--muted)">Loading…</div>');
   loadDay();
 }
