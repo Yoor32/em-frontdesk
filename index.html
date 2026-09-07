@@ -208,6 +208,7 @@ let UPCOMING = []; // current student's upcoming bookings
 const TZ = 'America/Toronto';
 const _fDate = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year:'numeric', month:'2-digit', day:'2-digit' });
 const _fDay  = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, weekday:'short', month:'short', day:'numeric' });
+const _fDayShort = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, month:'short', day:'numeric' });
 const _fTime = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour:'numeric', minute:'2-digit', hour12:true });
 function tzYMD(v){ const d = v instanceof Date ? v : new Date(v); return isNaN(d) ? '' : _fDate.format(d); }
 function businessDay(){ return tzYMD(new Date()); }
@@ -294,6 +295,7 @@ function closeStudent(){ document.getElementById("overlay").classList.remove("on
 function modalError(msg){ document.getElementById("modalContent").innerHTML='<div class="mhead"><div class="modtitle">Student</div><button class="close" onclick="closeStudent()">×</button></div><div class="mbody"><div class="msg err" style="display:block">'+esc(msg)+'</div></div>'; }
 
 function fmtDate(iso){ if(!iso) return "—"; const d=new Date(iso); if(isNaN(d)) return "—"; return _fDay.format(d)+" "+_fTime.format(d); }
+function fmtDateShort(iso){ if(!iso) return "—"; const d=new Date(iso); if(isNaN(d)) return "—"; return _fDayShort.format(d)+" "+_fTime.format(d); }
 function payStatusColor(s){ if(/attention|failed/i.test(s)) return "var(--err)"; if(/no payments/i.test(s)) return "var(--muted)"; return "var(--ok)"; }
 function renderStudent(r){
   const p=r.member?pct(r.stamps):0;
@@ -302,7 +304,7 @@ function renderStudent(r){
   const up = (r.upcoming||[]);
   UPCOMING = up;
   const upHtml = up.length
-    ? up.map((c,i)=>'<div class="reclineup" '+(c.id?'style="cursor:pointer" onclick="qaBookingDetail(\''+c.id+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDate(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+(c.covered?' <span class="statusbadge member" style="font-size:.56rem">EM ✦</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+(c.id?' ›':'')+'</span></div>').join("")
+    ? up.map((c,i)=>'<div class="reclineup" '+(c.id?'style="cursor:pointer" onclick="qaBookingDetail(\''+c.id+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.8rem;white-space:nowrap">'+fmtDateShort(c.time)+'</span><span style="flex:1;font-size:.85rem">'+esc(c.pkg||c.booking)+(c.covered?' <span class="statusbadge member" style="font-size:.56rem">EM ✦</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem">'+esc(c.status||"")+(c.id?' ›':'')+'</span></div>').join("")
     : '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No upcoming classes booked.</div>';
   // payments
   const pays=(r.payments||[]);
