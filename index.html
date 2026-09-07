@@ -51,8 +51,10 @@
 
   /* search + dropdown */
   .search{position:relative;margin-bottom:14px}
-  .search input{padding-left:38px}
+  .search input{padding-left:38px;padding-right:42px}
   .search::before{content:"🔍";position:absolute;left:13px;top:12px;opacity:.5}
+  .search-scan{position:absolute;right:4px;top:4px;width:auto;margin:0;padding:8px 9px;background:none;border:0;color:var(--muted);font-size:1.05rem;line-height:1}
+  .search-scan:hover{color:var(--gold)}
   .drop{position:absolute;left:0;right:0;top:50px;background:var(--panel);border:1px solid var(--panel3);border-radius:var(--r-sm);box-shadow:var(--sh);max-height:320px;overflow:auto;z-index:40;display:none}
   .drop.on{display:block}
   .ditem{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--line)}
@@ -141,7 +143,7 @@
     </div>
   </div>
 
-  <div class="search"><input id="live" placeholder="Search student by name…" autocomplete="off"><div id="drop" class="drop"></div></div>
+  <div class="search"><input id="live" placeholder="Search student by name…" autocomplete="off"><button class="search-scan" onclick="scanSearch()" title="Scan QR">📷</button><div id="drop" class="drop"></div></div>
 
   <div class="tabs">
     <div class="tab on" data-t="classes" onclick="showTab('classes')">🕺 Check-in &amp; Classes <span class="cnt">4</span></div>
@@ -307,6 +309,15 @@ async function runSearch(q){
     drop.innerHTML=r.results.map(s=>'<div class="ditem" onclick="openStudent(\''+esc(s.passport||"")+'\',\''+esc(s.studentId||"")+'\')"><div class="avatar">'+ini(s.name)+'</div><div style="flex:1"><div style="font-weight:600;font-size:.9rem">'+esc(s.name)+'</div><div style="color:var(--muted);font-size:.76rem">'+esc(s.passport||"no passport")+(s.member?' · ✦ member':'')+' · '+s.stamps+' stamps</div></div><span style="color:var(--muted)">›</span></div>').join("");
     drop.className="drop on";
   }catch(e){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--err)">'+esc(e.message||"Search failed")+'</div>'; }
+}
+function scanSearch(){
+  startScan(async code=>{
+    const drop=document.getElementById("drop");
+    const r=await resolveScan(code);
+    if(!r.ok){ if(drop){ drop.className="drop on"; drop.innerHTML='<div class="ditem" style="cursor:default;color:var(--err)">'+esc(r.error)+'</div>'; } return; }
+    if(drop) drop.className="drop";
+    openStudent(r.passport||"","");
+  });
 }
 
 /* ═══════════ STUDENT POPUP DASHBOARD ═══════════ */
@@ -867,8 +878,45 @@ async function attAll(){
 let DESK_DAY = businessDay();
 async function panelToday(){
   DESK_DAY = businessDay();
-  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(-1)">◀</button><input id="tdDate" type="date" style="flex:1" value="'+DESK_DAY+'" onchange="tdPick(this.value)"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="tdToday()">Today</button></div><div id="tdLabel" class="secline"></div><div id="td" style="color:var(--muted)">Loading…</div>');
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">Today\'s classes &amp; bookings</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(-1)">◀</button><input id="tdDate" type="date" style="flex:1" value="'+DESK_DAY+'" onchange="tdPick(this.value)"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="shift(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="tdToday()">Today</button></div><button class="btn ghost" style="margin-bottom:8px" onclick="scanForDay()">📷 Scan to check in — for this day</button><div id="tdScanMsg" class="msg"></div><div id="tdLabel" class="secline"></div><div id="td" style="color:var(--muted)">Loading…</div>');
   loadDay();
+}
+function scanForDay(){
+  startScan(async code=>{
+    const m=document.getElementById("tdScanMsg"); if(m){ m.className="msg"; m.textContent=""; }
+    const r=await resolveScan(code);
+    if(!r.ok){ if(m){ m.className="msg err"; m.textContent=r.error; } return; }
+    checkInForDay(r.passport);
+  });
+}
+let TD_PICK_CTX=null;
+async function checkInForDay(passport){
+  const m=document.getElementById("tdScanMsg"); if(!m) return;
+  try{
+    const r=await api({action:"checkin",passport,date:DESK_DAY});
+    if(r.ok){ m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:""); loadDay(); return; }
+    if(r.needsPick && Array.isArray(r.bookings) && r.bookings.length){
+      m.className="msg";
+      m.innerHTML='<div style="font-size:.85rem;margin-bottom:6px">'+esc(r.name||"Student")+' is booked into multiple classes this day — pick one</div>'+
+        r.bookings.map((b,i)=>'<button class="qa wide" style="margin-top:6px" onclick="pickDayBooking('+i+')">'+esc(b.name)+' · '+(b.time?_fTime.format(new Date(b.time)):"—")+'</button>').join("");
+      TD_PICK_CTX={passport,bookings:r.bookings};
+      return;
+    }
+    m.className="msg err";
+    m.innerHTML=esc(r.error||"No booking for this day")+'<br><button class="btn ghost" style="margin-top:8px" onclick="signUpForDay(\''+esc(passport)+'\',\''+esc(r.studentId||"")+'\')">📝 Sign up for a class</button>';
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function pickDayBooking(i){
+  if(!TD_PICK_CTX) return; const b=TD_PICK_CTX.bookings[i]; if(!b) return;
+  const m=document.getElementById("tdScanMsg"); if(!m) return;
+  try{ const r=await api({action:"checkin",passport:TD_PICK_CTX.passport,classId:b.classId,itemType:b.itemType});
+    if(r.ok){ m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:""); loadDay(); }
+    else { m.className="msg err"; m.textContent=r.error||"Check-in failed"; }
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function signUpForDay(passport, studentId){
+  await openStudent(passport, studentId);
+  qaEnrollForm();
 }
 const shift = n => { const [y,m,dd]=DESK_DAY.split('-').map(Number);
   const t=new Date(Date.UTC(y,m-1,dd+n,12)); DESK_DAY=tzYMD(t); loadDay(); };
