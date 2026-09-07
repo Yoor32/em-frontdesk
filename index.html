@@ -560,7 +560,7 @@ async function refreshStudent(){ try{ const r=await api({action:"student",passpo
 /* ═══════════ TABS (card grid) ═══════════ */
 const TABS = {
   classes:{ head:"Check-in & Classes · 5 actions", acts:[
-    {ico:"✅",t:"Check in",d:"Passport/email + class · +1 stamp (members)",star:1,fn:panelCheckin},
+    {ico:"✅",t:"Check in",d:"Scan, passport, or phone · auto-detects today's class",star:1,fn:panelCheckin},
     {ico:"📋",t:"Take attendance",d:"Class roster · check in one-by-one or all",star:1,fn:panelAttendance},
     {ico:"📅",t:"Today's classes",d:"Who's booked today",fn:panelToday},
     {ico:"👤",t:"Find student",d:"Open a student dashboard",fn:()=>document.getElementById("live").focus()},
@@ -599,25 +599,85 @@ function showTab(t){
 }
 function panelCard(html){ document.getElementById("tabBody").innerHTML='<div class="card"><button class="back" onclick="showTab(document.querySelector(\'.tab.on\').dataset.t)">‹ Back</button>'+html+'</div>'; }
 
-let PANEL_ITEMS=[];
+let PANEL_ITEMS=[], CI_TODAY_ITEMS=[], CI_PICK_CTX=null;
+function classifyId(raw){
+  const s=String(raw||"").trim();
+  if(!s) return {passport:"",phone:""};
+  if(s.includes("@")) return {passport:s,phone:""};
+  const digits=s.replace(/\D/g,""), stripped=s.replace(/[\s\-().]/g,"");
+  if(digits.length>=10 && digits===stripped) return {passport:"",phone:digits};
+  return {passport:s,phone:""};
+}
 function panelCheckin(){
-  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Passport # or email</label><input id="ci" placeholder="EM-0001 or name@email.com"><label>Class / service attending</label><select id="ciItem"><option value="">Loading classes…</option></select><button class="btn" onclick="doCheckinPanel()">Check in</button><button class="btn ghost" style="margin-top:8px" onclick="scanCheckin()">📷 Scan passport QR</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div>');
-  const el=document.getElementById("ci"); el.focus(); el.addEventListener("keydown",e=>{ if(e.key==="Enter")doCheckinPanel(); });
-  checkinCatalog().then(items=>{ PANEL_ITEMS=items; const s=document.getElementById("ciItem"); if(s){ s.innerHTML=catalogOptions(items); preselectClass(s,items); } }).catch(()=>{ const m=document.getElementById("ciMsg"); if(m){ m.className="msg err"; m.textContent="Could not load classes"; } });
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Check in</div><label>Scan QR, passport #, or phone</label><input id="ci" placeholder="Scan, EM-0001, or phone number" autocomplete="off"><button class="btn" onclick="doSmartCheckin()">Check in</button><button class="btn ghost" style="margin-top:8px" onclick="scanCheckin()">📷 Scan passport QR</button><div id="ciMsg" class="msg"></div><div id="ciRes"></div><div class="secline" style="margin-top:16px">📅 Today\'s classes &amp; services</div><div id="ciToday" style="color:var(--muted)">Loading…</div>');
+  const el=document.getElementById("ci"); el.focus(); el.addEventListener("keydown",e=>{ if(e.key==="Enter")doSmartCheckin(); });
+  checkinCatalog().then(items=>{ CI_TODAY_ITEMS=items.filter(x=>x._today); renderCiToday(); }).catch(()=>{ const t=document.getElementById("ciToday"); if(t){ t.className="msg err"; t.textContent="Could not load classes"; } });
 }
+function renderCiToday(){
+  const el=document.getElementById("ciToday"); if(!el) return;
+  const card=(x)=>'<div class="reclineup" style="cursor:pointer" onclick="openClassFromToday('+CI_TODAY_ITEMS.indexOf(x)+')"><span style="flex:1;font-size:.86rem">'+esc(x.name)+'</span><span class="statusbadge" style="font-size:.62rem;margin-right:6px">'+esc(x.kind==="event"?"Event":(x.type||"Class"))+'</span><span style="color:var(--muted);font-size:.72rem">›</span></div>';
+  const now=CI_TODAY_ITEMS.filter(x=>x._now), later=CI_TODAY_ITEMS.filter(x=>!x._now);
+  let h='';
+  if(now.length) h+='<div class="secline" style="margin-top:10px">▶ Happening now</div><div class="reclist">'+now.map(card).join("")+'</div>';
+  if(later.length) h+='<div class="secline" style="margin-top:10px">Later today</div><div class="reclist">'+later.map(card).join("")+'</div>';
+  el.innerHTML = h || '<div style="color:var(--muted);font-size:.83rem;padding:6px 0">No classes or events today.</div>';
+}
+function openClassFromToday(i){ const it=CI_TODAY_ITEMS[i]; if(it) panelAttendanceFor(it); }
 function scanCheckin(){
-  startScan(code=>{ const el=document.getElementById("ci"); if(el) el.value=code; doCheckinPanel(); });
+  startScan(code=>{ const el=document.getElementById("ci"); if(el) el.value=code; doSmartCheckin(); });
 }
-async function doCheckinPanel(){
-  const m=document.getElementById("ciMsg"); m.className="msg";
-  const it=PANEL_ITEMS[Number(document.getElementById("ciItem").value)];
+async function doSmartCheckin(){
+  const m=document.getElementById("ciMsg"); m.className="msg"; document.getElementById("ciRes").innerHTML="";
+  const raw=document.getElementById("ci").value.trim();
+  if(!raw){ m.className="msg err"; m.textContent="Scan a QR code or enter a passport #/phone"; return; }
+  const {passport,phone}=classifyId(raw);
+  try{
+    const r=await api({action:"checkin",passport,phone});
+    if(r.ok){
+      m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
+      document.getElementById("ci").value=""; document.getElementById("ci").focus();
+      document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+esc(r.passport||"")+'\',\'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
+      return;
+    }
+    if(r.needsPick && Array.isArray(r.bookings) && r.bookings.length){
+      m.className="msg";
+      CI_PICK_CTX={passport:r.passport||passport,phone:phone,bookings:r.bookings};
+      document.getElementById("ciRes").innerHTML='<div class="subform"><div style="font-size:.85rem;margin-bottom:6px">'+esc(r.name||"Student")+' is booked into multiple classes today — pick one</div>'+
+        r.bookings.map((b,i)=>'<button class="qa wide" style="margin-top:6px" onclick="pickAutoBooking('+i+')">'+esc(b.name)+' · '+(b.time?_fTime.format(new Date(b.time)):"—")+'</button>').join("")+'</div>';
+      return;
+    }
+    m.className="msg err"; m.textContent=r.error||"Not found";
+    document.getElementById("ciRes").innerHTML='<button class="btn ghost" style="margin-top:8px" onclick="showManualClassPicker(\''+esc(raw)+'\')">Pick a class manually</button>';
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function pickAutoBooking(i){
+  if(!CI_PICK_CTX) return; const b=CI_PICK_CTX.bookings[i]; if(!b) return;
+  const m=document.getElementById("ciMsg");
+  try{ const r=await api({action:"checkin",passport:CI_PICK_CTX.passport,phone:CI_PICK_CTX.phone,classId:b.classId,itemType:b.itemType});
+    if(r.ok){ m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:""); document.getElementById("ciRes").innerHTML=""; document.getElementById("ci").value=""; }
+    else { m.className="msg err"; m.textContent=r.error||"Check-in failed"; }
+  }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function showManualClassPicker(idOrPhone){
+  const zone=document.getElementById("ciRes");
+  zone.innerHTML='<div class="subform" style="color:var(--muted)">Loading classes…</div>';
+  try{
+    const items=await checkinCatalog(); PANEL_ITEMS=items;
+    zone.innerHTML='<div class="subform"><label>Class / service attending</label><select id="ciManualItem">'+catalogOptions(items)+'</select><button class="btn" onclick="doManualCheckin(\''+esc(idOrPhone)+'\')">Check in</button></div>';
+    preselectClass(document.getElementById("ciManualItem"),items);
+  }catch(e){ zone.innerHTML='<div class="msg err" style="display:block">'+esc(e.message)+'</div>'; }
+}
+async function doManualCheckin(idOrPhone){
+  const m=document.getElementById("ciMsg");
+  const it=PANEL_ITEMS[Number(document.getElementById("ciManualItem").value)];
   if(!it){ m.className="msg err"; m.textContent="Select a class"; return; }
-  try{ const r=await api({action:"checkin",passport:document.getElementById("ci").value,classId:it.id,itemType:it.kind});
-    if(!r.ok){ m.className="msg err"; m.textContent=r.error; return; }
+  const {passport,phone}=classifyId(idOrPhone);
+  try{ const r=await api({action:"checkin",passport,phone,classId:it.id,itemType:it.kind});
+    if(!r.ok){ m.className="msg err"; m.textContent=r.error||"Check-in failed"; return; }
     rememberClass(it);
+    document.getElementById("ciRes").innerHTML="";
     m.className="msg ok"; m.textContent=r.message+(r.rewardReached?" · 🎉 "+r.rewardReached:"");
-    document.getElementById("ci").value=""; document.getElementById("ci").focus();
-    document.getElementById("ciRes").innerHTML='<div style="margin-top:8px"><button class="btn ghost" onclick="openStudent(\''+esc(r.passport||CUR&&CUR.passport||"")+'\',\'\')">Open '+esc(r.studentName)+"'s dashboard</button></div>";
+    document.getElementById("ci").value="";
   }catch(e){ m.className="msg err"; m.textContent=e.message; }
 }
 /* ── Take attendance (class roster + bulk check-in) ── */
@@ -626,6 +686,16 @@ async function panelAttendance(){
   panelCard('<div class="modtitle" style="margin:6px 0 4px">Take attendance</div><label>Class / service</label><select id="atSel"><option value="">Loading classes…</option></select><button class="btn" onclick="loadRoster()">Load roster</button><div id="atMsg" class="msg"></div><div id="atList" style="margin-top:10px"></div>');
   try{ const items=await checkinCatalog(); ATT_ITEMS=items; const s=document.getElementById("atSel"); if(s){ s.innerHTML=catalogOptions(items); preselectClass(s,items); } }
   catch(e){ atStatus("err",e.message); }
+}
+async function panelAttendanceFor(item){
+  panelCard('<div class="modtitle" style="margin:6px 0 4px">Take attendance</div><label>Class / service</label><select id="atSel"><option value="">Loading classes…</option></select><button class="btn" onclick="loadRoster()">Load roster</button><div id="atMsg" class="msg"></div><div id="atList" style="margin-top:10px"></div>');
+  try{
+    const items=await checkinCatalog(); ATT_ITEMS=items;
+    const s=document.getElementById("atSel"); if(s) s.innerHTML=catalogOptions(items);
+    const idx=items.findIndex(x=>x.id===item.id && x.kind===item.kind);
+    if(s) s.selectedIndex = idx>=0?idx:0;
+    loadRoster();
+  }catch(e){ atStatus("err",e.message); }
 }
 function atStatus(cls,txt){ const m=document.getElementById("atMsg"); if(!m)return; m.className="msg "+(cls||""); m.textContent=txt||""; }
 async function loadRoster(){
