@@ -846,7 +846,11 @@ async function loadDay(){
     if(!r.ok){ el.textContent=r.error||"Could not load"; return; }
     if(lbl) lbl.textContent=DESK_DAY+' · '+(r.timezone||TZ)+' · '+(r.count??0)+' booking'+(r.count===1?'':'s');
     if(!r.count){ el.innerHTML='<div style="text-align:center;padding:14px">No bookings on this day.</div>'; return; }
-    el.innerHTML=r.bookings.map(b=>{ const t=b.time?_fTime.format(new Date(b.time)):"—"; return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem"><span><b style="color:var(--gold)">'+t+'</b> &nbsp;'+esc(b.booking)+'</span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>'; }).join("");
+    el.innerHTML=r.bookings.map(b=>{
+      const t=b.time?_fTime.format(new Date(b.time)):"—";
+      const clickable=b.studentId||b.passport;
+      return '<div class="reclineup" '+(clickable?'style="cursor:pointer" onclick="openStudent(\''+esc(b.passport||"")+'\',\''+esc(b.studentId||"")+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.85rem;white-space:nowrap">'+t+'</span><span style="flex:1;font-size:.88rem;padding-left:10px">'+esc(b.studentName||"—")+' <span style="color:var(--muted);font-size:.74rem">— '+esc(b.booking)+'</span></span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>';
+    }).join("");
   }catch(e){ const el=document.getElementById("td"); if(el){ el.style.color="var(--err)"; el.textContent=e.message; } }
 }
 function fmtDay(iso){ if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return _fDay.format(d); }
