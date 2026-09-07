@@ -233,7 +233,8 @@ function pct(stamps){ const next=LADDER.find(l=>l[0]>stamps),prev=[...LADDER].re
 /* Generate a Stripe checkout link via the n8n link generator, then open it. opts:{item,amount?,priceId?,email?} */
 async function genLink(opts){
   try{
-    const res=await fetch(LINK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({secret:LINK_SECRET,...opts})});
+    // Credentials go last so a caller's opts can never override them.
+    const res=await fetch(LINK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...opts,secret:LINK_SECRET,pin:PIN})});
     let d={}; try{ d=await res.json(); }catch(e){}
     if(res.ok && d && d.ok && d.url){ window.open(d.url,"_blank","noopener"); return {ok:true,url:d.url}; }
     return {ok:false,error:(d&&d.error)||("Server "+res.status)};
