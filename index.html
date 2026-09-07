@@ -145,7 +145,7 @@
 
   <div class="tabs">
     <div class="tab on" data-t="classes" onclick="showTab('classes')">🕺 Check-in &amp; Classes <span class="cnt">4</span></div>
-    <div class="tab" data-t="students" onclick="showTab('students')">👤 Students &amp; Passport <span class="cnt">4</span></div>
+    <div class="tab" data-t="students" onclick="showTab('students')">👤 Students &amp; Passport <span class="cnt">5</span></div>
     <div class="tab" data-t="payments" onclick="showTab('payments')">💳 Payments <span class="cnt">4</span></div>
     <div class="tab" data-t="reports" onclick="showTab('reports')">📊 Reports <span class="cnt">4</span></div>
   </div>
@@ -566,10 +566,11 @@ const TABS = {
     {ico:"👤",t:"Find student",d:"Open a student dashboard",fn:()=>document.getElementById("live").focus()},
     {ico:"🗓️",t:"Class calendar",d:"Opens the CRM calendar",fn:()=>window.open(CRM_LINKS.studio,"_blank")}
   ]},
-  students:{ head:"Students & Passport · 4 actions", acts:[
+  students:{ head:"Students & Passport · 5 actions", acts:[
     {ico:"➕",t:"New student",d:"Register a walk-in + passport #",star:1,fn:panelIntake},
     {ico:"🔍",t:"Find student",d:"Search → popup dashboard",fn:()=>document.getElementById("live").focus()},
     {ico:"⭐",t:"Start membership",d:"Find student, then start",fn:()=>document.getElementById("live").focus()},
+    {ico:"✦",t:"Active members",d:"Every active EM Passport · tap to open",fn:panelActiveMembers},
     {ico:"🗂️",t:"All students",d:"Opens the CRM Students DB",fn:()=>window.open(CRM_LINKS.students,"_blank")}
   ]},
   payments:{ head:"Payments · 4 actions", acts:[
@@ -914,6 +915,19 @@ async function doIntakePanel(){
     if(r.ok){ m.className="msg ok"; m.innerHTML="✓ "+esc(r.name)+" registered · "+esc(r.passport); }
     else { m.className="msg err"; m.textContent=r.error||"Could not register"; }
   }catch(e){ m.className="msg err"; m.textContent=e.message; }
+}
+async function panelActiveMembers(){
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">✦ Active members</div><div id="amList" style="color:var(--muted)">Loading…</div>');
+  try{
+    const r=await api({action:"activemembers"});
+    const el=document.getElementById("amList"); if(!el) return;
+    if(!r.ok){ el.className="msg err"; el.textContent=r.error||"Could not load"; return; }
+    if(!r.count){ el.innerHTML='<div style="text-align:center;padding:14px">No active members.</div>'; return; }
+    el.innerHTML='<div class="secline">'+r.count+' active member'+(r.count===1?'':'s')+'</div><div class="reclist">'+r.members.map(m=>{
+      const clickable=m.studentId||m.passport;
+      return '<div class="reclineup" '+(clickable?'style="cursor:pointer" onclick="openStudent(\''+esc(m.passport||"")+'\',\''+esc(m.studentId||"")+'\')"':'')+'><span style="flex:1;font-size:.86rem">'+esc(m.name||"—")+(m.passport?' <span style="color:var(--muted);font-size:.72rem">'+esc(m.passport)+'</span>':'')+'</span><span style="color:var(--muted);font-size:.72rem;text-align:right">'+esc(m.plan||"")+(m.renewalDate?'<br>renews '+esc(String(m.renewalDate).slice(0,10)):'')+'</span></div>';
+    }).join("")+'</div>';
+  }catch(e){ const el=document.getElementById("amList"); if(el){ el.className="msg err"; el.textContent=e.message; } }
 }
 function panelPayLinks(){
   panelCard(
