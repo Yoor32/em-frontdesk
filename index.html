@@ -173,6 +173,11 @@ const CRM_LINKS = {
 const LINK_URL = "https://yoor32.app.n8n.cloud/webhook/stripe-link"; // Stripe checkout-link generator (n8n)
 const LINK_SECRET = "em-frontdesk-2026"; // must match the secret in the n8n "Build Session Body" node
 const REPORT_URL = "https://yoor32.app.n8n.cloud/webhook/em-report"; // EM Reports API (weekly/monthly)
+const RESOLVE_URL = "https://yoor32.app.n8n.cloud/webhook/resolve-token";
+const TOKEN_RE = /^[a-f0-9]{32,}$/i;
+// Flip to true once every member is on the new card. While this is false a plain
+// passport QR still scans, which means the anti-forgery win is NOT live yet.
+const SCAN_TOKENS_ONLY = false;
 // Stripe recurring Price IDs. ACTIVE = TEST. AT GO-LIVE: comment the two TEST lines, uncomment the two LIVE lines, re-upload to GitHub.
 const PLAN_PRICE = {
   // TEST (active now):
@@ -239,6 +244,27 @@ async function genLink(opts){
     if(res.ok && d && d.ok && d.url){ window.open(d.url,"_blank","noopener"); return {ok:true,url:d.url}; }
     return {ok:false,error:(d&&d.error)||("Server "+res.status)};
   }catch(e){ return {ok:false,error:e.message}; }
+}
+/* A scanned code is either a member token (long hex) or a plain passport.
+   Tokens are resolved server-side; the desk never holds the token->passport map. */
+async function resolveScan(code){
+  const raw = String(code || "").trim();
+  if(!TOKEN_RE.test(raw)){
+    if(SCAN_TOKENS_ONLY) return { ok:false, error:"That's an old-style code. Ask them to open Passport › Check in." };
+    return { ok:true, passport: raw };
+  }
+  try{
+    const res = await fetch(RESOLVE_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin:PIN,token:raw})});
+    const d = await res.json().catch(()=>({}));
+    if(d && d.ok && d.passport) return { ok:true, passport:d.passport, studentName:d.studentName };
+    const why = {
+      expired:       "That code expired. Ask them to reopen the Check in tab.",
+      unknown_token: "That code isn't valid.",
+      bad_pin:       "Your session expired — log in again.",
+      bad_token:     "That code isn't valid."
+    }[d && d.reason];
+    return { ok:false, error: why || "Could not read that code." };
+  }catch(e){ return { ok:false, error:"Network error reading that code." }; }
 }
 
 /* ── login ── */
@@ -626,7 +652,12 @@ function renderCiToday(){
 }
 function openClassFromToday(i){ const it=CI_TODAY_ITEMS[i]; if(it) panelAttendanceFor(it); }
 function scanCheckin(){
-  startScan(code=>{ const el=document.getElementById("ci"); if(el) el.value=code; doSmartCheckin(); });
+  startScan(async code=>{
+    const r=await resolveScan(code);
+    if(!r.ok){ const m=document.getElementById("ciMsg"); if(m){ m.className="msg err"; m.textContent=r.error; } return; }
+    const el=document.getElementById("ci"); if(el) el.value=r.passport;
+    doSmartCheckin();
+  });
 }
 async function doSmartCheckin(){
   const m=document.getElementById("ciMsg"); m.className="msg"; document.getElementById("ciRes").innerHTML="";
@@ -761,7 +792,11 @@ async function attWalkin(sid){
 }
 function attScanStart(){
   if(!ATT){ atStatus("err","Load a roster first"); return; }
-  startScan(code=>attScanGo(code));
+  startScan(async code=>{
+    const r=await resolveScan(code);
+    if(!r.ok){ atStatus("err", r.error); return; }
+    attScanGo(r.passport);
+  });
 }
 async function attScanGo(code){
   atStatus("ok","Checking in "+code+"…");
