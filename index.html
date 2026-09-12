@@ -602,7 +602,7 @@ const TABS = {
     {ico:"📋",t:"Take attendance",d:"Class roster · check in one-by-one or all",star:1,fn:panelAttendance},
     {ico:"📅",t:"Today's classes",d:"Who's booked today",fn:panelToday},
     {ico:"👤",t:"Find student",d:"Open a student dashboard",fn:()=>document.getElementById("live").focus()},
-    {ico:"🗓️",t:"Class calendar",d:"Opens the CRM calendar",fn:()=>window.open(CRM_LINKS.studio,"_blank")}
+    {ico:"🗓️",t:"Class calendar",d:"Weekly view · filter by service",fn:panelWeekCalendar}
   ]},
   students:{ head:"Students & Passport · 5 actions", acts:[
     {ico:"➕",t:"New student",d:"Register a walk-in + passport #",star:1,fn:panelIntake},
@@ -937,6 +937,53 @@ async function loadDay(){
       return '<div class="reclineup" '+(clickable?'style="cursor:pointer" onclick="openStudent(\''+esc(b.passport||"")+'\',\''+esc(b.studentId||"")+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.85rem;white-space:nowrap">'+t+'</span><span style="flex:1;font-size:.88rem;padding-left:10px">'+esc(b.studentName||"—")+' <span style="color:var(--muted);font-size:.74rem">— '+esc(b.booking)+'</span></span><span style="color:var(--muted);font-size:.76rem">'+esc(b.status||"")+'</span></div>';
     }).join("");
   }catch(e){ const el=document.getElementById("td"); if(el){ el.style.color="var(--err)"; el.textContent=e.message; } }
+}
+/* ── Class calendar (weekly view, filter by service) ── */
+function ymdToNoonUTC(ymd){ const [y,m,d]=ymd.split('-').map(Number); return new Date(Date.UTC(y,m-1,d,12)); }
+let CAL_DAY = businessDay(), CAL_WEEK = null, CAL_FILTER = "";
+async function panelWeekCalendar(){
+  CAL_DAY = businessDay();
+  panelCard('<div class="modtitle" style="margin:6px 0 8px">🗓️ Class calendar</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="calShiftWeek(-1)">◀</button><div id="calRange" class="secline" style="flex:1;text-align:center;margin:0">Loading…</div><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="calShiftWeek(1)">▶</button><button class="btn ghost" style="width:auto;margin:0;padding:9px 12px" onclick="calThisWeek()">This week</button></div><label>Filter by service</label><select id="calFilter" onchange="calApplyFilter(this.value)"><option value="">All services</option></select><div id="calBody" style="color:var(--muted);margin-top:12px">Loading…</div>');
+  loadWeek();
+}
+const calShiftWeek = n => { const [y,m,dd]=CAL_DAY.split('-').map(Number);
+  const t=new Date(Date.UTC(y,m-1,dd+n*7,12)); CAL_DAY=tzYMD(t); loadWeek(); };
+function calThisWeek(){ CAL_DAY=businessDay(); loadWeek(); }
+function calApplyFilter(v){ CAL_FILTER=v; renderWeek(); }
+async function loadWeek(){
+  const rangeEl=document.getElementById("calRange"), bodyEl=document.getElementById("calBody"); if(!bodyEl) return;
+  bodyEl.style.color="";
+  try{
+    const r=await api({action:'week', date: CAL_DAY});
+    if(!r.ok){ bodyEl.style.color="var(--err)"; bodyEl.textContent=r.error||"Could not load"; return; }
+    CAL_WEEK=r;
+    if(rangeEl) rangeEl.textContent=_fDay.format(ymdToNoonUTC(r.weekStart))+' – '+_fDay.format(ymdToNoonUTC(r.weekEnd))+' · '+r.count+' booking'+(r.count===1?'':'s');
+    const sel=document.getElementById("calFilter");
+    if(sel){
+      const names=[...new Set(r.bookings.map(b=>b.booking).filter(Boolean))].sort();
+      if(!names.includes(CAL_FILTER)) CAL_FILTER="";
+      sel.innerHTML='<option value="">All services</option>'+names.map(n=>'<option value="'+esc(n)+'"'+(n===CAL_FILTER?' selected':'')+'>'+esc(n)+'</option>').join("");
+    }
+    renderWeek();
+  }catch(e){ bodyEl.style.color="var(--err)"; bodyEl.textContent=e.message; }
+}
+function renderWeek(){
+  const el=document.getElementById("calBody"); if(!el||!CAL_WEEK) return;
+  el.style.color="";
+  const [y,m,d]=CAL_WEEK.weekStart.split('-').map(Number);
+  const days=[]; for(let i=0;i<7;i++) days.push(tzYMD(new Date(Date.UTC(y,m-1,d+i,12))));
+  const byDay={}; days.forEach(dy=>byDay[dy]=[]);
+  CAL_WEEK.bookings.forEach(b=>{ if(!CAL_FILTER||b.booking===CAL_FILTER) (byDay[b.day]||(byDay[b.day]=[])).push(b); });
+  el.innerHTML=days.map(dy=>{
+    const items=byDay[dy]||[];
+    const label=_fDay.format(ymdToNoonUTC(dy))+(dy===businessDay()?' · today':'');
+    const rows=items.length ? items.map(b=>{
+      const t=b.time?_fTime.format(new Date(b.time)):"—";
+      const clickable=b.studentId||b.passport;
+      return '<div class="reclineup" '+(clickable?'style="cursor:pointer" onclick="openStudent(\''+esc(b.passport||"")+'\',\''+esc(b.studentId||"")+'\')"':'')+'><span style="color:var(--gold);font-weight:600;font-size:.82rem;white-space:nowrap">'+t+'</span><span style="flex:1;font-size:.85rem;padding-left:10px">'+esc(b.studentName||"—")+' <span style="color:var(--muted);font-size:.72rem">— '+esc(b.booking)+'</span></span><span style="color:var(--muted);font-size:.72rem">'+esc(b.status||"")+'</span></div>';
+    }).join("") : '<div style="color:var(--muted);font-size:.8rem;padding:6px 0">No bookings.</div>';
+    return '<div class="secline" style="margin-top:12px">'+esc(label)+'</div><div class="reclist">'+rows+'</div>';
+  }).join("");
 }
 function fmtDay(iso){ if(!iso) return ""; const d=new Date(iso); if(isNaN(d)) return ""; return _fDay.format(d); }
 function money(n){ n=Number(n||0); return (n<0?"-$":"$")+Math.abs(n).toFixed(2); }
